@@ -126,6 +126,7 @@ cd /Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent-cli && pnpm test
 - `--adapter pi` 时必须提供 `--provider` 和 `--model`。
 - 支持通过 `--api-key` 传入模型凭证。
 - 支持从供应商环境变量读取模型凭证。
+- 已支持 DeepSeek 的 `DEEPSEEK_API_KEY` 凭证映射。
 - Pi 适配器通过 `RpcClient` 启动 Pi RPC 子进程。
 - CLI 能展示 Pi 启动步骤和 Pi 失败事件。
 - 如果 agent 产生 `task.failed`，CLI 退出码为非 0。
@@ -137,6 +138,7 @@ cd /Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent-cli && pnpm test
 | `openai` | `OPENAI_API_KEY` |
 | `anthropic` | `ANTHROPIC_API_KEY` |
 | `google` / `gemini` | `GOOGLE_API_KEY` |
+| `deepseek` | `DEEPSEEK_API_KEY` |
 | `mistral` | `MISTRAL_API_KEY` |
 
 模型配置命令：
@@ -146,8 +148,8 @@ cd /Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent-cli
 
 pnpm dev run "只读说明这个项目的目录结构，不要修改文件" \
   --adapter pi \
-  --provider openai \
-  --model <模型名> \
+  --provider deepseek \
+  --model deepseek-chat \
   --workspace /Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent-protocol
 ```
 
@@ -156,9 +158,9 @@ pnpm dev run "只读说明这个项目的目录结构，不要修改文件" \
 ```text
 pnpm dev run "只读说明这个项目的目录结构，不要修改文件" \
   --adapter pi \
-  --provider openai \
-  --model <模型名> \
-  --api-key "$OPENAI_API_KEY" \
+  --provider deepseek \
+  --model deepseek-chat \
+  --api-key "$DEEPSEEK_API_KEY" \
   --workspace /Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent-protocol
 ```
 
@@ -173,17 +175,18 @@ pnpm build
 验证结果：
 
 - `coding-agent-cli` 测试、类型检查和构建通过。
-- 未提供 `OPENAI_API_KEY` 时，CLI 会在配置层直接失败，并提示需要 `OPENAI_API_KEY` 或 `--api-key`。
+- 未提供对应供应商 API Key 时，CLI 会在配置层直接失败，并提示需要哪个环境变量或 `--api-key`。
 - 使用无效 `--api-key invalid-test-key` 时，CLI 已进入 Pi RPC 路径，输出 `步骤：启动 Pi RPC：openai/gpt-5.5`，随后因 Pi 没有完成事件流而以 `PI_INIT_FAILED Timeout collecting events` 失败，退出码为 1。
 
-当前阻塞：
+当前状态：
 
 - 本机没有可用于真实模型调用的 API Key。
-- 当前 Node.js 为 `22.14.0`，Pi 包声明运行要求为 `>=22.19.0`。短验证可以启动 Pi RPC，但正式验证前建议升级 Node.js，避免后续出现运行时兼容问题。
+- 当前 Node.js 已升级到 `v24.18.0`，满足 Pi 包声明的 `>=22.19.0` 要求。
+- DeepSeek 无 key 时会在配置层提示需要 `DEEPSEEK_API_KEY` 或 `--api-key`。
+- 传入测试 key 时可以进入 `步骤：启动 Pi RPC：deepseek/deepseek-chat`，这只证明本项目封装已进入 Pi 层，不证明真实模型调用成功。
 
 下一步：
 
-1. 配置真实模型凭证，例如 `OPENAI_API_KEY`。
-2. 升级 Node.js 到 Pi 包声明的版本要求。
-3. 对一个非本项目仓库执行只读任务，确认 Pi 能读取目录结构并返回总结。
-4. 再执行一个小范围写入任务，验证 diff、失败退出码和后续 trace 设计。
+1. 配置真实模型凭证，例如 `DEEPSEEK_API_KEY`。
+2. 对一个非本项目仓库执行只读任务，确认 Pi 能读取目录结构并返回总结。
+3. 再执行一个小范围写入任务，验证 diff、失败退出码和后续 trace 设计。

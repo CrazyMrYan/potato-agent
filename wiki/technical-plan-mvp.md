@@ -319,19 +319,19 @@ CLI 第一阶段直接在 `agent run` 中配置模型：
 ```text
 agent run "<任务描述>" \
   --adapter pi \
-  --provider openai \
-  --model <模型名> \
+  --provider deepseek \
+  --model deepseek-chat \
   --workspace <本地项目路径>
 ```
 
 支持两种凭证配置方式：
 
 ```text
-OPENAI_API_KEY=... agent run "<任务描述>" --adapter pi --provider openai --model <模型名>
+DEEPSEEK_API_KEY=... agent run "<任务描述>" --adapter pi --provider deepseek --model deepseek-chat
 ```
 
 ```text
-agent run "<任务描述>" --adapter pi --provider openai --model <模型名> --api-key "$OPENAI_API_KEY"
+agent run "<任务描述>" --adapter pi --provider deepseek --model deepseek-chat --api-key "$DEEPSEEK_API_KEY"
 ```
 
 当前凭证映射：
@@ -341,6 +341,7 @@ agent run "<任务描述>" --adapter pi --provider openai --model <模型名> --
 | `openai` | `OPENAI_API_KEY` |
 | `anthropic` | `ANTHROPIC_API_KEY` |
 | `google` / `gemini` | `GOOGLE_API_KEY` |
+| `deepseek` | `DEEPSEEK_API_KEY` |
 | `mistral` | `MISTRAL_API_KEY` |
 
 配置校验规则：
