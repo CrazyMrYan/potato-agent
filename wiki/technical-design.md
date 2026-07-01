@@ -82,9 +82,12 @@ CLI 面向的是开发者，所以第一版优先支持少量高频命令：
 
 ```text
 agent run "<任务描述>"
+agent chat
 agent diff
 agent trace
 ```
+
+`agent run` 用于一次性任务验证。`agent chat` 用于保持同一个 Pi RPC 会话，在终端里做多轮输入，适合验证“前一轮上下文是否能延续到后一轮”。
 
 ### AgentGateway
 
@@ -140,6 +143,20 @@ interface AgentGateway {
 - 转换 Pi 事件。
 - 捕获错误。
 - 把最终结果返回给 `AgentOrchestrator`。
+
+Pi 事件转换由独立的 `PiEventMapper` 承担。这样一次性 `run` 和多轮 `chat` 可以复用同一套事件映射规则，避免不同入口展示的信息不一致。
+
+当前映射规则：
+
+| Pi 事件 | 本项目事件 | 说明 |
+| --- | --- | --- |
+| `agent_start` | `step.started` | Pi 开始处理任务 |
+| `turn_start` | `step.started` | Pi 开始新一轮推理 |
+| `message_update` | `assistant.delta` | 提取 assistant text 和 thinking 增量 |
+| `tool_execution_start` | `tool.started` | 提取 `args` 生成工具摘要 |
+| `tool_execution_end` | `tool.finished` | 提取结果摘要和成功状态 |
+
+工具摘要优先展示开发者关心的细节，例如 `read` 的文件路径、`bash` 的命令、`grep` 的搜索词。拿不到结构化参数时才退回通用摘要。
 
 ### RuntimePiAdapter
 
@@ -210,6 +227,7 @@ type AgentEvent =
   | StepStartedEvent
   | ToolCallStartedEvent
   | ToolCallFinishedEvent
+  | AssistantMessageDeltaEvent
   | ApprovalRequestedEvent
   | DiffProducedEvent
   | VerificationStartedEvent
@@ -219,6 +237,19 @@ type AgentEvent =
 ```
 
 事件模型要稳定。即使后续 Pi 的内部事件变了，CLI 也应该尽量不受影响。
+
+`AssistantMessageDeltaEvent` 用于流式展示模型输出：
+
+```ts
+type AssistantMessageDeltaEvent = {
+  type: "assistant.delta";
+  taskId: string;
+  channel: "text" | "thinking";
+  text: string;
+};
+```
+
+注意：thinking 内容是否能展示，取决于底层模型和 Pi RPC 事件是否实际提供 thinking content。本项目只负责不丢弃已经进入 Pi RPC 事件流的内容。
 
 ### ChangeSet
 

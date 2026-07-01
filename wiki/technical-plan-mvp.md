@@ -148,6 +148,7 @@ export type AgentEvent =
   | StepStartedEvent
   | ToolCallStartedEvent
   | ToolCallFinishedEvent
+  | AssistantMessageDeltaEvent
   | ApprovalRequestedEvent
   | DiffProducedEvent
   | VerificationStartedEvent
@@ -163,6 +164,15 @@ export type ChangeSet = {
     status: "added" | "modified" | "deleted" | "renamed";
     diff?: string;
   }>;
+};
+```
+
+```ts
+export type AssistantMessageDeltaEvent = {
+  type: "assistant.delta";
+  taskId: string;
+  channel: "text" | "thinking";
+  text: string;
 };
 ```
 
@@ -351,7 +361,8 @@ agent run "<任务描述>" --provider deepseek --model deepseek-chat --api-key "
 - 必须能从 `--api-key` 或对应环境变量拿到凭证。
 - 如果 Pi 事件流返回 `task.failed`，CLI 必须返回非 0 退出码。
 - `PiRpcAdapter` 必须通过 `onEvent + prompt + waitForIdle` 转发事件，避免使用批量收集后的 `promptAndWait`。
-- 文本级 token/delta 流式需要后续扩展 `coding-agent-protocol` 的事件模型。
+- `PiEventMapper` 必须把 Pi 的 `message_update` 转换成 `assistant.delta`，用于展示正文和 thinking 片段。
+- `PiEventMapper` 必须从 `tool_execution_start.args` 中提取工具关键参数，例如读取路径和 bash 命令。
 
 ### Tool Boundary
 
@@ -414,6 +425,22 @@ agent run "修复测试失败"
 5. 渲染事件流。
 6. 遇到确认事件时阻塞等待用户输入。
 7. 任务结束后显示总结。
+
+### agent chat
+
+```bash
+agent chat --provider deepseek --model deepseek-reasoner --workspace <本地项目路径>
+```
+
+行为：
+
+1. 启动一个 Pi RPC 子进程。
+2. 进入终端输入循环。
+3. 每次用户输入都发送到同一个 Pi 会话。
+4. 每轮实时渲染 step、assistant delta、工具调用和最终总结。
+5. 输入 `/exit` 或 `/quit` 时停止会话并关闭 Pi RPC 子进程。
+
+`agent chat` 是第一阶段验证多轮上下文的最小交互壳，不做复杂 TUI。
 
 ### agent diff
 
@@ -510,6 +537,7 @@ FakePiAdapter
 - M1：已完成
 - M2：已完成
 - M3：已完成配置能力，真实模型验证等待有效凭证
+- M3.5：已完成工具详情、assistant delta 和 CLI 多轮交互
 - M4：待规划
 - M5：待规划
 
@@ -569,6 +597,31 @@ FakePiAdapter
 - 配置能力已完成。
 - 真实模型调用等待有效 API Key。
 - 当前 Node.js 为 `22.14.0`，正式验证前建议升级到 Pi 包声明的 `>=22.19.0`。
+
+### M3.5：工具详情和多轮交互
+
+产物：
+
+- `AssistantMessageDeltaEvent` 协议类型。
+- `PiEventMapper`。
+- 工具调用参数摘要。
+- `PiRpcSessionAdapter`。
+- `agent chat` 命令。
+
+验收：
+
+- `message_update` 中的 assistant text 和 thinking 可以转换成 `assistant.delta`。
+- `tool_execution_start` 可以展示 `read` 的文件路径和 `bash` 的命令。
+- `agent chat` 可以在同一个 Pi RPC 会话中连续发送多轮输入。
+- `pnpm test` 通过。
+- `pnpm typecheck` 通过。
+- `pnpm build` 通过。
+
+当前状态：
+
+- 已完成。
+- thinking 是否出现取决于模型和 Pi RPC 事件是否实际返回 thinking content。
+- CLI 仍保持轻量终端交互，不引入复杂 TUI。
 
 ### M4：Trace 和 diff
 

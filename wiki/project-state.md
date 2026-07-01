@@ -2,7 +2,7 @@
 
 ## 当前阶段
 
-当前处于“第一阶段执行验证：M3 模型配置和 Pi RPC 接入已完成，真实模型验证等待有效凭证”。
+当前处于“第一阶段执行验证：M3 模型配置、Pi RPC 接入、工具详情事件和 CLI 多轮交互已完成，真实模型写入验证待继续”。
 
 已经确定：
 
@@ -14,6 +14,9 @@
 - CLI 是第一阶段验证壳。
 - CLI 已接入 `@earendil-works/pi-coding-agent` 的 `RpcClient`。
 - 当前真实 Pi 路径使用 `PiRpcAdapter` 启动 Pi RPC 子进程。
+- CLI 已支持一次性 `run` 和持久 RPC 会话的 `chat`。
+- 协议已补充 `assistant.delta`，用于承载 Pi 输出的正文片段和 thinking 片段。
+- Pi 工具事件会提取 `args` 中的关键参数，例如 `read` 的文件路径和 `bash` 的命令。
 - 独立 `coding-agent-runtime` 仓库仍作为后续演进方向。
 
 ## 阶段文档
@@ -76,6 +79,44 @@ docs: record validation result
 3. 为工具边界和权限策略写独立执行计划。
 4. 接入文件、搜索、Git、Shell 工具。
 5. 在提供真实模型凭证后，对其他本地项目执行端到端验证。
+
+### M3.5：工具详情、推理片段和多轮交互
+
+状态：已完成。
+
+实现仓库：
+
+- `/Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent-protocol`
+- `/Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent-cli`
+
+新增能力：
+
+- `coding-agent-protocol` 新增 `assistant.delta` 事件，`channel` 区分 `text` 和 `thinking`。
+- `PiEventMapper` 统一转换 Pi RPC 原始事件。
+- `tool_execution_start` 会从 Pi 的 `args` 提取关键信息：
+  - `read` 展示读取文件路径。
+  - `bash` 展示执行命令。
+  - `ls`、`grep`、`find`、`edit`、`write` 展示对应摘要。
+- `tool_execution_end` 会尽量提取工具输出摘要。
+- `agent chat` 使用同一个 Pi RPC 子进程持续多轮对话，不再每次输入都重新初始化会话。
+- `chat` 支持 `/exit` 或 `/quit` 退出。
+
+交互命令：
+
+```text
+cd /Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent-cli
+
+pnpm dev chat \
+  --provider deepseek \
+  --model deepseek-reasoner \
+  --workspace /Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent-protocol
+```
+
+说明：
+
+- thinking 内容是否存在取决于 Pi RPC 是否收到模型/供应商返回的 thinking content。
+- 当前 CLI 只做朴素终端交互，不做复杂 TUI。
+- 这一步解决的是“同一会话多轮输入”和“事件里不要丢工具关键参数”，不是完整桌面端 UI。
 
 ## 执行验证记录
 
