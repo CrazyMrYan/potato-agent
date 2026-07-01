@@ -2,7 +2,7 @@
 
 ## 当前阶段
 
-当前处于“第一阶段执行验证设计”。
+当前处于“第一阶段执行验证：M1-M2 已完成”。
 
 已经确定：
 
@@ -55,10 +55,45 @@ docs: record validation result
 
 ## 下一步
 
-下一步是执行验证第一阶段：
+下一步是继续执行验证第一阶段的后续能力：
 
-1. 创建 `coding-agent-protocol`。
-2. 创建 `coding-agent-cli`。
-3. 用 `FakePiAdapter` 跑通 CLI 事件流。
-4. 加入 trace、diff、权限和工具边界。
+1. 为 trace 和 diff 写独立执行计划。
+2. 加入 `JsonlTraceStore`、`agent trace` 和 `agent diff`。
+3. 为工具边界和权限策略写独立执行计划。
+4. 接入文件、搜索、Git、Shell 工具。
 5. 最后接入真实 Pi。
+
+## 执行验证记录
+
+### M1-M2：协议仓库和 CLI 骨架
+
+状态：已完成。
+
+实现仓库：
+
+- `/Users/yanjiahui/Desktop/coding-agent-protocol`
+- `/Users/yanjiahui/Desktop/coding-agent-cli`
+
+提交记录：
+
+- `coding-agent-protocol`: `0f808a3 feat: initialize protocol contracts`
+- `coding-agent-cli`: `8949599 feat: initialize cli skeleton`
+
+验证命令：
+
+```text
+cd /Users/yanjiahui/Desktop/coding-agent-protocol && pnpm test && pnpm typecheck && pnpm build
+cd /Users/yanjiahui/Desktop/coding-agent-cli && pnpm test && pnpm typecheck && pnpm dev run "测试任务" && pnpm build
+```
+
+结果：
+
+- `coding-agent-protocol` 类型、测试和构建通过。
+- `coding-agent-cli` 可以通过 `FakePiAdapter` 输出完整模拟事件流。
+- `agent run "测试任务"` 已输出任务开始、步骤、工具调用、diff 和任务完成事件。
+- 当前还没有接入 trace、diff 命令、权限策略、工具边界和真实 Pi。
+
+下一步：
+
+- 为 trace 和 diff 建立下一份 Superpowers 执行计划。
+- 继续维护 `wiki/` 中的阶段状态和验证结果。
