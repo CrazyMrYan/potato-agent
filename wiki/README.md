@@ -1,19 +1,19 @@
-# Wiki
+# 知识库
 
-This directory is the knowledge base for the project.
+这个目录是项目知识库。
 
-Use it to store:
+用于存放：
 
-- Architecture decisions
-- Product model notes
-- Open source project research
-- Agent engineering notes
-- Implementation plans
-- Experiment results
-- Trade-off records
+- 架构决策
+- 产品模型笔记
+- 开源项目调研
+- 智能体工程笔记
+- 实现计划
+- 实验结果
+- 取舍记录
 
-The wiki is intentionally separate from source code so the project can first clarify the core model before implementation details take over.
+知识库和源码保持分离。这样可以先把项目的核心模型、边界和取舍说清楚，再进入具体实现。
 
-Start with:
+从这里开始：
 
-- [Architecture](architecture.md)
+- [架构设计](architecture.md)

@@ -1,71 +1,125 @@
-# Architecture
+# 架构设计
 
-## Current Direction
+## 当前方向
 
-Build a developer-focused coding agent with the core workflow validated through a CLI before investing in desktop UI.
+构建一个面向开发者的编码智能体产品。第一阶段不优先做桌面 UI，而是先通过 CLI 验证核心工作流。
 
-The product should first prove that it can:
+产品需要先证明自己能完成这些事情：
 
-- Accept a developer task.
-- Use Pi as the agent core layer.
-- Inspect and reason over a local codebase.
-- Show progress while the agent works.
-- Apply or propose code changes.
-- Display diffs clearly.
-- Run verification commands when needed.
-- Report what changed and what remains uncertain.
+- 接收开发者任务。
+- 使用 Pi 作为智能体核心层。
+- 检查并理解本地代码仓库。
+- 在智能体工作时展示当前进展。
+- 应用或提出代码变更。
+- 清晰展示文件差异。
+- 必要时运行验证命令。
+- 汇报变更内容和仍不确定的事项。
 
-## Core Decision
+## 核心决策
 
-Use Pi directly as the core agent layer.
+直接使用 Pi 作为核心智能体层。
 
-The first host UI should be a CLI. The CLI does not need a polished interface. It only needs to make the agent loop observable:
+第一阶段宿主 UI 使用 CLI。CLI 不需要精致界面，只需要让智能体循环可观察：
 
-- Current step
-- Tool/action being executed
-- Important command output
-- Files touched
-- Diff preview
-- Final summary
+- 当前步骤
+- 正在执行的工具或动作
+- 关键命令输出
+- 涉及的文件
+- 差异预览
+- 最终总结
 
-## Removed From Scope
+## 默认语言
 
-Claude Code is not part of the core architecture.
+项目文档默认使用中文。
 
-It may be useful as a market reference later, but it should not be used as the runtime, backend, or hidden dependency for this project.
+后续开发的 CLI 也默认使用中文，包括：
 
-## Initial System Model
+- 命令说明
+- 交互提示
+- 进度状态
+- 错误信息
+- 差异说明
+- 最终总结
+
+如果未来需要英文，可以作为可配置的国际化能力加入，而不是第一阶段默认目标。
+
+## 移出范围
+
+Claude Code 不作为核心架构的一部分。
+
+它后续可以作为市场参考对象，但不应该作为本项目的运行时、后端或隐藏依赖。
+
+## 总体架构
 
 ```text
 CLI
-  User-facing validation shell.
-  Starts tasks, streams progress, displays diffs, asks for confirmation.
+  面向用户的第一阶段验证壳。
+  负责启动任务、展示进度、展示 diff、请求确认。
 
-Pi Core Layer
-  Agent runtime.
-  Handles task loop, tool calling, context, planning, and execution.
+Pi 核心层
+  智能体运行时。
+  负责任务循环、工具调用、上下文、规划和执行。
 
-Tool Runtime
-  Local capabilities exposed to the agent.
-  Includes file read/write, search, patch, shell, git diff, and test commands.
+工具运行层
+  暴露给智能体的本地能力。
+  包括文件读写、搜索、补丁、Shell、Git diff 和测试命令。
 
-Knowledge Base
-  Project memory stored in this wiki.
-  Keeps decisions, experiments, and architecture notes explicit.
+知识库
+  存放在 wiki 目录中。
+  记录决策、实验、架构笔记和实现计划。
 ```
 
-## Near-Term Validation
+```mermaid
+flowchart TB
+    User["开发者"] --> CLI["CLI 验证壳<br/>中文交互 / 进度展示 / diff 展示"]
+    CLI --> Pi["Pi 核心层<br/>任务循环 / 规划 / 上下文 / 工具调用"]
+    Pi --> Tools["工具运行层"]
+    Tools --> FS["文件系统<br/>读取 / 写入 / Patch"]
+    Tools --> Search["代码搜索<br/>文件匹配 / 内容检索"]
+    Tools --> Shell["Shell<br/>命令执行 / 测试 / 构建"]
+    Tools --> Git["Git<br/>状态 / diff / 提交边界"]
+    Pi --> Trace["运行记录<br/>步骤 / 工具调用 / 结果 / 错误"]
+    CLI --> Wiki["知识库<br/>架构 / 决策 / 实验记录"]
+```
 
-The first practical milestone is a CLI that can run a task against a local repository and show:
+## 任务执行流程
+
+```mermaid
+flowchart TD
+    A["用户输入任务"] --> B["CLI 创建任务上下文"]
+    B --> C["Pi 分析任务并收集上下文"]
+    C --> D{"是否需要更多信息？"}
+    D -- "是" --> E["调用工具读取文件 / 搜索代码 / 查看 Git 状态"]
+    E --> C
+    D -- "否" --> F["生成计划或下一步动作"]
+    F --> G{"动作是否需要确认？"}
+    G -- "是" --> H["CLI 请求用户确认"]
+    H --> I{"用户是否同意？"}
+    I -- "否" --> J["调整计划或停止任务"]
+    I -- "是" --> K["执行工具动作"]
+    G -- "否" --> K
+    K --> L["产生文件变更或命令结果"]
+    L --> M["CLI 展示进度和 diff"]
+    M --> N{"是否需要验证？"}
+    N -- "是" --> O["运行测试 / 构建 / 检查命令"]
+    O --> P{"验证是否通过？"}
+    P -- "否" --> C
+    P -- "是" --> Q["输出最终总结"]
+    N -- "否" --> Q
+```
+
+## 近期验证目标
+
+第一个实用里程碑是 CLI 能够针对一个本地仓库运行任务，并展示：
 
 ```text
-task received
-context gathered
-plan or next action
-tool/action progress
-diff
-verification result
-summary
+收到任务
+收集上下文
+计划或下一步动作
+工具 / 动作进度
+文件差异
+验证结果
+最终总结
 ```
 
-The CLI is only the validation shell. The long-term product can later add a desktop host without replacing the core model.
+CLI 只是验证壳。长期产品可以再加入桌面端宿主，但不替换核心模型。

@@ -1,13 +1,14 @@
-# Coding Agent
+# 编码智能体
 
-This repository is the planning and knowledge base workspace for a developer-focused coding agent product.
+这个仓库用于沉淀一个面向开发者的编码智能体产品。
 
-The current direction is to validate the core agent workflow first:
+当前方向是先验证核心智能体工作流：
 
-- Use Pi as the core agent layer.
-- Use a CLI as the first UI shell.
-- Show the user what the agent is doing.
-- Show file diffs clearly.
-- Defer desktop UI work until the core workflow is proven.
+- 直接使用 Pi 作为核心层。
+- 先用 CLI 作为第一阶段交互壳。
+- CLI 默认使用中文输出和中文交互。
+- 让用户能看到智能体正在做什么。
+- 清晰展示文件差异。
+- 在核心工作流被验证前，暂缓桌面端 UI 投入。
 
-Project notes, architecture decisions, research, and implementation records live in [`wiki/`](wiki/README.md).
+项目笔记、架构决策、调研记录和实现计划统一存放在 [`wiki/`](wiki/README.md)。
