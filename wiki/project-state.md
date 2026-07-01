@@ -114,7 +114,7 @@ cd /Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent-cli && pnpm test
 
 ### M3：模型配置和 Pi RPC 接入
 
-状态：已完成配置能力；真实模型调用等待有效 API Key。
+状态：已完成配置能力和事件级流式输出；真实模型调用等待有效 API Key。
 
 实现仓库：
 
@@ -122,12 +122,13 @@ cd /Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent-cli && pnpm test
 
 新增能力：
 
-- `agent run` 支持 `--adapter fake|pi`。
-- `--adapter pi` 时必须提供 `--provider` 和 `--model`。
+- `agent run` 默认使用 Pi，不再暴露 `--adapter` 参数。
+- 必须提供 `--provider` 和 `--model`。
 - 支持通过 `--api-key` 传入模型凭证。
 - 支持从供应商环境变量读取模型凭证。
 - 已支持 DeepSeek 的 `DEEPSEEK_API_KEY` 凭证映射。
 - Pi 适配器通过 `RpcClient` 启动 Pi RPC 子进程。
+- `PiRpcAdapter` 使用 `onEvent + prompt + waitForIdle` 实时转发 Pi 事件。
 - CLI 能展示 Pi 启动步骤和 Pi 失败事件。
 - 如果 agent 产生 `task.failed`，CLI 退出码为非 0。
 
@@ -147,7 +148,6 @@ cd /Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent-cli && pnpm test
 cd /Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent-cli
 
 pnpm dev run "只读说明这个项目的目录结构，不要修改文件" \
-  --adapter pi \
   --provider deepseek \
   --model deepseek-chat \
   --workspace /Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent-protocol
@@ -157,7 +157,6 @@ pnpm dev run "只读说明这个项目的目录结构，不要修改文件" \
 
 ```text
 pnpm dev run "只读说明这个项目的目录结构，不要修改文件" \
-  --adapter pi \
   --provider deepseek \
   --model deepseek-chat \
   --api-key "$DEEPSEEK_API_KEY" \
@@ -176,7 +175,9 @@ pnpm build
 
 - `coding-agent-cli` 测试、类型检查和构建通过。
 - 未提供对应供应商 API Key 时，CLI 会在配置层直接失败，并提示需要哪个环境变量或 `--api-key`。
-- 使用无效 `--api-key invalid-test-key` 时，CLI 已进入 Pi RPC 路径，输出 `步骤：启动 Pi RPC：openai/gpt-5.5`，随后因 Pi 没有完成事件流而以 `PI_INIT_FAILED Timeout collecting events` 失败，退出码为 1。
+- 使用无效 `--api-key invalid-test-key` 时，CLI 已进入 Pi RPC 路径，输出 `步骤：启动 Pi RPC：deepseek/deepseek-chat`。
+- 当前已实现事件级流式输出：Pi 的 step/tool 事件到达后会即时转发到 CLI。
+- 当前尚未实现文本级 token/delta 流式输出；最终回答仍通过 `task.finished` 展示。
 
 当前状态：
 

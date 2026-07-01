@@ -352,10 +352,10 @@ sequenceDiagram
 ### M3：模型配置和 Pi RPC 接入
 
 - 实现 `PiRpcAdapter`。
-- 支持 `--adapter pi`。
 - 支持 `--provider`、`--model` 和 `--api-key`。
 - 能从供应商环境变量读取凭证。
 - 能启动 Pi RPC 子进程并把失败转换成标准事件。
+- 能实时转发 Pi step/tool 事件。
 - 真实模型调用等待有效 API Key。
 
 ### M4：工具和 diff

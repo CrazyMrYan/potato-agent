@@ -318,7 +318,6 @@ CLI 第一阶段直接在 `agent run` 中配置模型：
 
 ```text
 agent run "<任务描述>" \
-  --adapter pi \
   --provider deepseek \
   --model deepseek-chat \
   --workspace <本地项目路径>
@@ -327,11 +326,11 @@ agent run "<任务描述>" \
 支持两种凭证配置方式：
 
 ```text
-DEEPSEEK_API_KEY=... agent run "<任务描述>" --adapter pi --provider deepseek --model deepseek-chat
+DEEPSEEK_API_KEY=... agent run "<任务描述>" --provider deepseek --model deepseek-chat
 ```
 
 ```text
-agent run "<任务描述>" --adapter pi --provider deepseek --model deepseek-chat --api-key "$DEEPSEEK_API_KEY"
+agent run "<任务描述>" --provider deepseek --model deepseek-chat --api-key "$DEEPSEEK_API_KEY"
 ```
 
 当前凭证映射：
@@ -346,10 +345,13 @@ agent run "<任务描述>" --adapter pi --provider deepseek --model deepseek-cha
 
 配置校验规则：
 
-- `--adapter pi` 必须提供 `--provider`。
-- `--adapter pi` 必须提供 `--model`。
-- `--adapter pi` 必须能从 `--api-key` 或对应环境变量拿到凭证。
+- `agent run` 默认使用 Pi。
+- 必须提供 `--provider`。
+- 必须提供 `--model`。
+- 必须能从 `--api-key` 或对应环境变量拿到凭证。
 - 如果 Pi 事件流返回 `task.failed`，CLI 必须返回非 0 退出码。
+- `PiRpcAdapter` 必须通过 `onEvent + prompt + waitForIdle` 转发事件，避免使用批量收集后的 `promptAndWait`。
+- 文本级 token/delta 流式需要后续扩展 `coding-agent-protocol` 的事件模型。
 
 ### Tool Boundary
 
@@ -546,12 +548,12 @@ FakePiAdapter
 
 - `PiRpcAdapter`。
 - `@earendil-works/pi-coding-agent` 依赖。
-- `--adapter pi`。
 - `--provider`。
 - `--model`。
 - `--api-key`。
 - 供应商环境变量映射。
 - Pi CLI 路径解析。
+- Pi 事件级流式转发。
 - agent 失败事件的非 0 退出码。
 
 验收：
