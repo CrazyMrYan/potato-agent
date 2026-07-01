@@ -22,7 +22,7 @@
 
 ## 技术路线
 
-采用“独立仓库 + 进程内 Pi + 协议边界先行”的路线。
+采用“独立仓库 + Pi RPC 接入 + 协议边界先行”的路线。
 
 第一版运行形态：
 
@@ -30,8 +30,9 @@
 coding-agent-cli
   -> AgentGateway
   -> AgentOrchestrator
-  -> InProcessPiAdapter
-  -> Pi SDK
+  -> PiRpcAdapter
+  -> @earendil-works/pi-coding-agent RpcClient
+  -> Pi RPC 子进程
   -> Tool Boundary
   -> 本地文件 / Git / Shell / 搜索
 ```
@@ -42,13 +43,13 @@ coding-agent-cli
 coding-agent-cli / coding-agent-desktop
   -> AgentGateway
   -> AgentOrchestrator
-  -> RpcPiAdapter
+  -> RuntimePiAdapter
   -> coding-agent-runtime 子进程
   -> Pi SDK
   -> Tool Boundary
 ```
 
-第一阶段只实现进程内 Pi 适配器，但接口上保留 runtime 拆分能力。
+第一阶段先使用 Pi SDK 已提供的 `RpcClient` 启动 Pi RPC 子进程。这样可以更早验证真实 Pi 路径，同时仍保留后续拆出独立 `coding-agent-runtime` 仓库的能力。
 
 ## 仓库拆分
 
@@ -64,10 +65,10 @@ coding-agent-protocol
 coding-agent-cli
   第一阶段可执行产品。
   依赖 coding-agent-protocol。
-  内部包含 AgentGateway、AgentOrchestrator、InProcessPiAdapter、Tool Boundary。
+  内部包含 AgentGateway、AgentOrchestrator、PiRpcAdapter、Tool Boundary。
 ```
 
-暂不单独拆 `coding-agent-runtime`。等进程内方案跑通，再把 Pi runtime 拆成独立仓库。
+暂不单独拆 `coding-agent-runtime`。等 Pi RPC 路径跑通并完成真实任务验证，再把本项目 runtime 拆成独立仓库。
 
 原因：
 
@@ -80,7 +81,7 @@ coding-agent-cli
 | 层级 | 技术选择 | 说明 |
 | --- | --- | --- |
 | 语言 | TypeScript | 适合 CLI、协议、Node 工具层和后续桌面端复用 |
-| 运行时 | Node.js | 便于接入文件系统、Git、Shell、Pi SDK |
+| 运行时 | Node.js | 便于接入文件系统、Git、Shell、Pi SDK；Pi 包声明需要 `>=22.19.0` |
 | 包管理 | pnpm | 适合后续 workspace，但独立仓库也可单独使用 |
 | CLI 框架 | commander | 命令解析简单稳定 |
 | 终端输出 | picocolors + 自定义 renderer | 第一版不引入复杂 TUI |
@@ -217,7 +218,8 @@ coding-agent-cli/
       contextPolicy.ts
     pi/
       PiAdapter.ts
-      InProcessPiAdapter.ts
+      PiRpcAdapter.ts
+      resolvePiCliPath.ts
     tools/
       ToolBoundary.ts
       fileTools.ts
@@ -296,19 +298,57 @@ export interface PiAdapter {
 第一版：
 
 ```text
-InProcessPiAdapter
-  -> 调用 Pi SDK
-  -> 注册工具
+PiRpcAdapter
+  -> 调用 Pi SDK RpcClient
+  -> 启动 Pi RPC 子进程
   -> 把 Pi 输出转换成 PiAdapterEvent
 ```
 
 后续：
 
 ```text
-RpcPiAdapter
-  -> 调用本地 runtime 子进程
+RuntimePiAdapter
+  -> 调用本项目自己的 runtime 子进程
   -> 通过 JSON event stream 传输事件
 ```
+
+### 模型配置
+
+CLI 第一阶段直接在 `agent run` 中配置模型：
+
+```text
+agent run "<任务描述>" \
+  --adapter pi \
+  --provider openai \
+  --model <模型名> \
+  --workspace <本地项目路径>
+```
+
+支持两种凭证配置方式：
+
+```text
+OPENAI_API_KEY=... agent run "<任务描述>" --adapter pi --provider openai --model <模型名>
+```
+
+```text
+agent run "<任务描述>" --adapter pi --provider openai --model <模型名> --api-key "$OPENAI_API_KEY"
+```
+
+当前凭证映射：
+
+| provider | 环境变量 |
+| --- | --- |
+| `openai` | `OPENAI_API_KEY` |
+| `anthropic` | `ANTHROPIC_API_KEY` |
+| `google` / `gemini` | `GOOGLE_API_KEY` |
+| `mistral` | `MISTRAL_API_KEY` |
+
+配置校验规则：
+
+- `--adapter pi` 必须提供 `--provider`。
+- `--adapter pi` 必须提供 `--model`。
+- `--adapter pi` 必须能从 `--api-key` 或对应环境变量拿到凭证。
+- 如果 Pi 事件流返回 `task.failed`，CLI 必须返回非 0 退出码。
 
 ### Tool Boundary
 
@@ -466,7 +506,7 @@ FakePiAdapter
 
 - M1：已完成
 - M2：已完成
-- M3：待规划
+- M3：已完成配置能力，真实模型验证等待有效凭证
 - M4：待规划
 - M5：待规划
 
@@ -499,7 +539,35 @@ FakePiAdapter
 - 运行 `agent run "测试任务"` 可以看到完整模拟流程。
 - 不需要真实 Pi。
 
-### M3：Trace 和 diff
+### M3：模型配置和 Pi RPC 接入
+
+产物：
+
+- `PiRpcAdapter`。
+- `@earendil-works/pi-coding-agent` 依赖。
+- `--adapter pi`。
+- `--provider`。
+- `--model`。
+- `--api-key`。
+- 供应商环境变量映射。
+- Pi CLI 路径解析。
+- agent 失败事件的非 0 退出码。
+
+验收：
+
+- `pnpm test` 通过。
+- `pnpm typecheck` 通过。
+- `pnpm build` 通过。
+- 未配置 API Key 时，CLI 在配置层明确提示缺少哪个环境变量。
+- 传入 `--api-key` 后，CLI 能进入 Pi RPC 启动路径。
+
+当前状态：
+
+- 配置能力已完成。
+- 真实模型调用等待有效 API Key。
+- 当前 Node.js 为 `22.14.0`，正式验证前建议升级到 Pi 包声明的 `>=22.19.0`。
+
+### M4：Trace 和 diff
 
 产物：
 
@@ -514,7 +582,7 @@ FakePiAdapter
 - `agent trace` 可以读取最近任务。
 - `agent diff` 能展示当前工作区变更。
 
-### M4：工具边界
+### M5：工具边界
 
 产物：
 
@@ -531,20 +599,19 @@ FakePiAdapter
 - 写文件和执行命令必须出现确认。
 - 拒绝确认会产生 `TaskFailed` 或可恢复事件。
 
-### M5：接入 Pi
+### M6：真实模型任务验证
 
 产物：
 
-- `InProcessPiAdapter`。
-- Pi SDK 初始化。
-- 工具注册。
-- Pi 事件转换。
+- 使用真实 API Key 的端到端验证记录。
+- 至少一个只读本地项目验证。
+- 至少一个小范围写入项目验证。
 
 验收：
 
-- `agent run "<真实任务>"` 能通过 Pi 读取仓库、提出或执行变更。
-- CLI 能展示进度和 diff。
-- trace 能记录关键过程。
+- `agent run "<真实任务>"` 能通过 Pi 读取仓库并返回总结。
+- CLI 能展示 Pi 进度和失败状态。
+- 后续 trace 和 diff 能记录关键过程。
 
 ## 第一阶段不做
 
@@ -564,7 +631,7 @@ FakePiAdapter
 | --- | --- |
 | Pi SDK 事件模型和预期不一致 | 用 `PiAdapter` 隔离，只把稳定事件输出给 Orchestrator |
 | 工具权限边界不清 | 所有工具都必须经过 `Tool Boundary` 和 `ApprovalPolicy` |
-| 真实模型调试成本高 | M1-M4 使用 `FakePiAdapter` 先跑通自有链路 |
+| 真实模型调试成本高 | 配置层先做 provider/model/key 校验；无有效凭证时不进入真实模型调用 |
 | diff 展示复杂化 | 第一版只使用 Git diff |
 | trace 后续查询需求变复杂 | 第一版 JSONL，后续再迁移 SQLite |
 
@@ -590,5 +657,6 @@ FakePiAdapter
 2. 定义协议类型和测试。
 3. 初始化 `coding-agent-cli`。
 4. 用 `FakePiAdapter` 跑通 CLI 事件流。
-5. 加 trace、diff、权限和工具边界。
-6. 最后接入真实 Pi。
+5. 配置真实模型凭证并升级 Node.js。
+6. 加 trace、diff、权限和工具边界。
+7. 做真实 Pi 端到端任务验证。

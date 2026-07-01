@@ -15,15 +15,15 @@
 
 ## 核心判断
 
-采用“进程内优先，协议边界先行”的方案。
+采用“Pi RPC 优先，协议边界先行”的方案。
 
-第一版直接在 CLI 进程内调用 Pi SDK，减少工程复杂度。与此同时，在 CLI 和 Pi 之间引入 `AgentGateway`、`AgentOrchestrator` 和 `PiAdapter`。
+第一版通过 `@earendil-works/pi-coding-agent` 的 `RpcClient` 启动 Pi RPC 子进程。与此同时，在 CLI 和 Pi 之间引入 `AgentGateway`、`AgentOrchestrator` 和 `PiAdapter`。
 
 `AgentGateway` 是宿主入口，面向 CLI 和后续桌面端。`AgentOrchestrator` 是本项目自己的产品能力层，负责任务生命周期、上下文策略、权限策略、验证策略、diff 策略和 trace。`PiAdapter` 负责把我们的任务、工具和策略翻译给 Pi，并把 Pi 的输出转换成我们的事件模型。
 
 CLI 不直接依赖 Pi 的内部事件和对象结构，而是依赖我们自己的任务协议。
 
-后续如果需要把 Pi runtime 拆成独立进程，只需要增加 `RpcPiAdapter` 或独立 runtime gateway。CLI、`AgentGateway` 和大部分编排逻辑不需要重写。
+后续如果需要把 Pi runtime 拆成独立仓库，只需要增加本项目自己的 runtime gateway。CLI、`AgentGateway` 和大部分编排逻辑不需要重写。
 
 ## 能力放置原则
 
@@ -34,7 +34,7 @@ Pi 是底层执行引擎，不是产品能力的唯一承载点。后续要在 P
 | 命令解析、终端展示、用户输入 | CLI Host | 只和当前宿主形态有关 |
 | 对外任务接口、事件流入口 | AgentGateway | 保持 CLI、桌面端和未来宿主的统一入口 |
 | 任务生命周期、模式、权限、上下文、验证、diff、trace | AgentOrchestrator | 这是本项目自己的长期产品能力 |
-| Pi SDK 调用、Pi 事件转换、Pi 工具注册 | PiAdapter | 隔离 Pi 的具体 API 和运行形态 |
+| Pi RPC 启动、Pi 事件转换、Pi 工具注册 | PiAdapter | 隔离 Pi 的具体 API 和运行形态 |
 | 推理、规划、工具调用循环 | Pi | 复用 Pi 的底层 agent 能力 |
 | 文件、Git、Shell、搜索等本地访问 | Tool Boundary | 统一权限、审计和错误处理 |
 
@@ -47,11 +47,11 @@ flowchart TB
     User["开发者"] --> CLI["CLI Host<br/>任务输入 / 进度展示 / diff 展示 / 用户确认"]
     CLI --> Gateway["AgentGateway<br/>任务协议 / 事件转换 / 生命周期控制"]
     Gateway --> Orchestrator["AgentOrchestrator<br/>任务生命周期 / 权限 / 上下文 / 验证 / diff / trace"]
-    Orchestrator --> InProc["InProcessPiAdapter<br/>第一版：进程内调用 Pi SDK"]
-    Orchestrator -. "后续可替换" .-> RPC["RpcPiAdapter<br/>本地子进程 / RPC / JSON 事件流"]
+    Orchestrator --> RPC["PiRpcAdapter<br/>第一版：启动 Pi RPC 子进程"]
+    Orchestrator -. "后续可替换" .-> Runtime["RuntimePiAdapter<br/>本项目 runtime 子进程 / JSON 事件流"]
 
-    InProc --> PiSDK["Pi SDK / Pi Coding Agent"]
-    RPC --> PiProc["Pi Runtime 子进程"]
+    RPC --> PiSDK["Pi SDK RpcClient / Pi Coding Agent"]
+    Runtime --> PiProc["coding-agent-runtime 子进程"]
 
     PiSDK --> ToolBoundary["Tool Boundary<br/>权限 / 审计 / 统一工具接口"]
     PiProc --> ToolBoundary
@@ -126,22 +126,24 @@ interface AgentGateway {
 
 这层是我们在 Pi 之上“套能力”的主要位置。Pi 可以替换，CLI 可以替换，但这层沉淀的是项目自己的产品模型和工程策略。
 
-### InProcessPiAdapter
+### PiRpcAdapter
 
-`InProcessPiAdapter` 是第一版实际 Pi 适配器。它在 CLI 进程内调用 Pi SDK，并把 Pi 的事件、工具调用和结果转换成 `AgentEvent`。
+`PiRpcAdapter` 是第一版实际 Pi 适配器。它通过 Pi SDK 的 `RpcClient` 启动 Pi RPC 子进程，并把 Pi 的事件、工具调用和结果转换成 `AgentEvent`。
 
 它负责：
 
-- 初始化 Pi。
+- 解析 Pi CLI 入口。
+- 启动 Pi RPC 子进程。
+- 传入 provider、model 和供应商 API Key。
 - 注册工具。
 - 注入任务上下文。
 - 转换 Pi 事件。
 - 捕获错误。
 - 把最终结果返回给 `AgentOrchestrator`。
 
-### RpcPiAdapter
+### RuntimePiAdapter
 
-`RpcPiAdapter` 不在第一版实现，但协议要为它留出空间。
+`RuntimePiAdapter` 不在第一版实现，但协议要为它留出空间。
 
 未来它可以通过本地子进程运行 Pi runtime：
 
@@ -149,8 +151,8 @@ interface AgentGateway {
 CLI Host
   -> AgentGateway
   -> AgentOrchestrator
-  -> RpcPiAdapter
-  -> Pi Runtime 子进程
+  -> RuntimePiAdapter
+  -> coding-agent-runtime 子进程
   -> JSON event stream / RPC
 ```
 
@@ -240,7 +242,7 @@ sequenceDiagram
     participant C as CLI Host
     participant G as AgentGateway
     participant O as AgentOrchestrator
-    participant P as InProcessPiAdapter
+    participant P as PiRpcAdapter
     participant T as Tool Boundary
     participant S as Trace Store
 
@@ -248,7 +250,7 @@ sequenceDiagram
     C->>G: runTask(input)
     G->>O: 创建任务
     O->>S: 记录 TaskStarted
-    O->>P: 启动 Pi 任务
+    O->>P: 启动 Pi RPC 任务
     P->>T: 请求搜索 / 文件 / Git 工具动作
     T->>O: 请求权限判断
     O->>S: 记录工具调用事件
@@ -341,21 +343,29 @@ sequenceDiagram
 - 支持 `agent run "<任务描述>"`。
 - 能输出模拟事件流。
 
-### M2：接入 Pi
+### M2：CLI 骨架
 
-- 实现 `InProcessPiAdapter`。
-- 能启动 Pi 任务。
-- 能注册最小工具集。
-- 能把 Pi 输出转换成标准事件。
+- 实现 `FakePiAdapter`。
+- 能在没有真实模型凭证时跑通任务事件流。
+- 能输出任务开始、步骤、工具调用、diff 和任务完成事件。
 
-### M3：工具和 diff
+### M3：模型配置和 Pi RPC 接入
+
+- 实现 `PiRpcAdapter`。
+- 支持 `--adapter pi`。
+- 支持 `--provider`、`--model` 和 `--api-key`。
+- 能从供应商环境变量读取凭证。
+- 能启动 Pi RPC 子进程并把失败转换成标准事件。
+- 真实模型调用等待有效 API Key。
+
+### M4：工具和 diff
 
 - 支持读取文件、搜索、Git diff。
 - 支持 patch 或文件写入。
 - 能展示 `ChangeSet`。
 - 写操作前请求确认。
 
-### M4：验证和 trace
+### M5：验证和 trace
 
 - 支持运行测试或用户指定命令。
 - 记录 JSONL trace。
@@ -364,7 +374,7 @@ sequenceDiagram
 
 ## 设计取舍
 
-选择进程内 Pi SDK 是为了快速验证，不是最终绑定。
+选择 Pi SDK 的 `RpcClient` 是为了快速验证真实 Pi 路径，不是最终绑定。
 
 保留 `AgentGateway` 和 `AgentOrchestrator` 是为了避免 CLI、桌面端和未来 runtime 直接耦合 Pi 内部结构。
 

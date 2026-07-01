@@ -2,7 +2,7 @@
 
 ## 当前阶段
 
-当前处于“第一阶段执行验证：M1-M2 已完成”。
+当前处于“第一阶段执行验证：M3 模型配置和 Pi RPC 接入已完成，真实模型验证等待有效凭证”。
 
 已经确定：
 
@@ -12,8 +12,9 @@
 - Pi 作为底层智能体执行引擎。
 - 本项目自己的产品能力沉在 `AgentOrchestrator`。
 - CLI 是第一阶段验证壳。
-- 第一版使用进程内 `InProcessPiAdapter`。
-- 独立 runtime 子进程只作为后续演进方向。
+- CLI 已接入 `@earendil-works/pi-coding-agent` 的 `RpcClient`。
+- 当前真实 Pi 路径使用 `PiRpcAdapter` 启动 Pi RPC 子进程。
+- 独立 `coding-agent-runtime` 仓库仍作为后续演进方向。
 
 ## 阶段文档
 
@@ -74,7 +75,7 @@ docs: record validation result
 2. 加入 `JsonlTraceStore`、`agent trace` 和 `agent diff`。
 3. 为工具边界和权限策略写独立执行计划。
 4. 接入文件、搜索、Git、Shell 工具。
-5. 最后接入真实 Pi。
+5. 在提供真实模型凭证后，对其他本地项目执行端到端验证。
 
 ## 执行验证记录
 
@@ -110,3 +111,79 @@ cd /Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent-cli && pnpm test
 
 - 为 trace 和 diff 建立下一份 Superpowers 执行计划。
 - 继续维护 `wiki/` 中的阶段状态和验证结果。
+
+### M3：模型配置和 Pi RPC 接入
+
+状态：已完成配置能力；真实模型调用等待有效 API Key。
+
+实现仓库：
+
+- `/Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent-cli`
+
+新增能力：
+
+- `agent run` 支持 `--adapter fake|pi`。
+- `--adapter pi` 时必须提供 `--provider` 和 `--model`。
+- 支持通过 `--api-key` 传入模型凭证。
+- 支持从供应商环境变量读取模型凭证。
+- Pi 适配器通过 `RpcClient` 启动 Pi RPC 子进程。
+- CLI 能展示 Pi 启动步骤和 Pi 失败事件。
+- 如果 agent 产生 `task.failed`，CLI 退出码为非 0。
+
+当前支持的凭证映射：
+
+| provider | 环境变量 |
+| --- | --- |
+| `openai` | `OPENAI_API_KEY` |
+| `anthropic` | `ANTHROPIC_API_KEY` |
+| `google` / `gemini` | `GOOGLE_API_KEY` |
+| `mistral` | `MISTRAL_API_KEY` |
+
+模型配置命令：
+
+```text
+cd /Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent-cli
+
+pnpm dev run "只读说明这个项目的目录结构，不要修改文件" \
+  --adapter pi \
+  --provider openai \
+  --model <模型名> \
+  --workspace /Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent-protocol
+```
+
+也可以显式传入凭证：
+
+```text
+pnpm dev run "只读说明这个项目的目录结构，不要修改文件" \
+  --adapter pi \
+  --provider openai \
+  --model <模型名> \
+  --api-key "$OPENAI_API_KEY" \
+  --workspace /Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent-protocol
+```
+
+验证命令：
+
+```text
+pnpm test
+pnpm typecheck
+pnpm build
+```
+
+验证结果：
+
+- `coding-agent-cli` 测试、类型检查和构建通过。
+- 未提供 `OPENAI_API_KEY` 时，CLI 会在配置层直接失败，并提示需要 `OPENAI_API_KEY` 或 `--api-key`。
+- 使用无效 `--api-key invalid-test-key` 时，CLI 已进入 Pi RPC 路径，输出 `步骤：启动 Pi RPC：openai/gpt-5.5`，随后因 Pi 没有完成事件流而以 `PI_INIT_FAILED Timeout collecting events` 失败，退出码为 1。
+
+当前阻塞：
+
+- 本机没有可用于真实模型调用的 API Key。
+- 当前 Node.js 为 `22.14.0`，Pi 包声明运行要求为 `>=22.19.0`。短验证可以启动 Pi RPC，但正式验证前建议升级 Node.js，避免后续出现运行时兼容问题。
+
+下一步：
+
+1. 配置真实模型凭证，例如 `OPENAI_API_KEY`。
+2. 升级 Node.js 到 Pi 包声明的版本要求。
+3. 对一个非本项目仓库执行只读任务，确认 Pi 能读取目录结构并返回总结。
+4. 再执行一个小范围写入任务，验证 diff、失败退出码和后续 trace 设计。
