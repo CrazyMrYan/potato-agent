@@ -22,8 +22,8 @@ This plan executes the current project phase described in:
 The current repository remains the knowledge base and control repository. Implementation should happen in sibling repositories:
 
 ```text
-/Users/yanjiahui/Desktop/coding-agent-protocol
-/Users/yanjiahui/Desktop/coding-agent-cli
+/Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent-protocol
+/Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent-cli
 ```
 
 Whenever architecture, phase status, milestones, repository split, module responsibility, validation result, or implementation scope changes, update `wiki/` in this repository in the same working session.
@@ -108,16 +108,16 @@ coding-agent/
 ## Task 1: Create `coding-agent-protocol`
 
 **Files:**
-- Create: `/Users/yanjiahui/Desktop/coding-agent-protocol/package.json`
-- Create: `/Users/yanjiahui/Desktop/coding-agent-protocol/tsconfig.json`
-- Create: `/Users/yanjiahui/Desktop/coding-agent-protocol/vitest.config.ts`
-- Create: `/Users/yanjiahui/Desktop/coding-agent-protocol/src/task.ts`
-- Create: `/Users/yanjiahui/Desktop/coding-agent-protocol/src/changeset.ts`
-- Create: `/Users/yanjiahui/Desktop/coding-agent-protocol/src/approval.ts`
-- Create: `/Users/yanjiahui/Desktop/coding-agent-protocol/src/errors.ts`
-- Create: `/Users/yanjiahui/Desktop/coding-agent-protocol/src/events.ts`
-- Create: `/Users/yanjiahui/Desktop/coding-agent-protocol/src/index.ts`
-- Create: `/Users/yanjiahui/Desktop/coding-agent-protocol/tests/exports.test.ts`
+- Create: `/Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent-protocol/package.json`
+- Create: `/Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent-protocol/tsconfig.json`
+- Create: `/Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent-protocol/vitest.config.ts`
+- Create: `/Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent-protocol/src/task.ts`
+- Create: `/Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent-protocol/src/changeset.ts`
+- Create: `/Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent-protocol/src/approval.ts`
+- Create: `/Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent-protocol/src/errors.ts`
+- Create: `/Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent-protocol/src/events.ts`
+- Create: `/Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent-protocol/src/index.ts`
+- Create: `/Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent-protocol/tests/exports.test.ts`
 
 - [ ] **Step 1: Initialize repository**
 
@@ -137,7 +137,7 @@ Expected: repository exists on `main`, dependencies are installed.
 
 - [ ] **Step 2: Write package config**
 
-Create `/Users/yanjiahui/Desktop/coding-agent-protocol/package.json`:
+Create `/Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent-protocol/package.json`:
 
 ```json
 {
@@ -165,7 +165,7 @@ Create `/Users/yanjiahui/Desktop/coding-agent-protocol/package.json`:
 
 - [ ] **Step 3: Write TypeScript config**
 
-Create `/Users/yanjiahui/Desktop/coding-agent-protocol/tsconfig.json`:
+Create `/Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent-protocol/tsconfig.json`:
 
 ```json
 {
@@ -183,7 +183,7 @@ Create `/Users/yanjiahui/Desktop/coding-agent-protocol/tsconfig.json`:
 }
 ```
 
-Create `/Users/yanjiahui/Desktop/coding-agent-protocol/vitest.config.ts`:
+Create `/Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent-protocol/vitest.config.ts`:
 
 ```ts
 import { defineConfig } from "vitest/config";
@@ -197,7 +197,7 @@ export default defineConfig({
 
 - [ ] **Step 4: Write protocol types**
 
-Create `/Users/yanjiahui/Desktop/coding-agent-protocol/src/task.ts`:
+Create `/Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent-protocol/src/task.ts`:
 
 ```ts
 export type TaskMode = "run";
@@ -212,7 +212,7 @@ export type RunTaskInput = {
 };
 ```
 
-Create `/Users/yanjiahui/Desktop/coding-agent-protocol/src/changeset.ts`:
+Create `/Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent-protocol/src/changeset.ts`:
 
 ```ts
 export type FileChangeStatus = "added" | "modified" | "deleted" | "renamed";
@@ -226,7 +226,7 @@ export type ChangeSet = {
 };
 ```
 
-Create `/Users/yanjiahui/Desktop/coding-agent-protocol/src/approval.ts`:
+Create `/Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent-protocol/src/approval.ts`:
 
 ```ts
 export type ApprovalKind = "write_file" | "run_command" | "delete_file";
@@ -247,7 +247,7 @@ export type ApprovalDecision =
   | { type: "deny"; reason: string };
 ```
 
-Create `/Users/yanjiahui/Desktop/coding-agent-protocol/src/errors.ts`:
+Create `/Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent-protocol/src/errors.ts`:
 
 ```ts
 export type AgentErrorCode =
@@ -267,7 +267,7 @@ export type AgentError = {
 };
 ```
 
-Create `/Users/yanjiahui/Desktop/coding-agent-protocol/src/events.ts`:
+Create `/Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent-protocol/src/events.ts`:
 
 ```ts
 import type { ApprovalRequest } from "./approval.js";
@@ -353,7 +353,7 @@ export type AgentEvent =
   | TaskFailedEvent;
 ```
 
-Create `/Users/yanjiahui/Desktop/coding-agent-protocol/src/index.ts`:
+Create `/Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent-protocol/src/index.ts`:
 
 ```ts
 export type { ApprovalDecision, ApprovalKind, ApprovalRequest, ApprovalRisk } from "./approval.js";
@@ -377,7 +377,7 @@ export type { ApprovalMode, RunTaskInput, TaskMode } from "./task.js";
 
 - [ ] **Step 5: Write export test**
 
-Create `/Users/yanjiahui/Desktop/coding-agent-protocol/tests/exports.test.ts`:
+Create `/Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent-protocol/tests/exports.test.ts`:
 
 ```ts
 import { describe, expect, it } from "vitest";
@@ -410,7 +410,7 @@ describe("protocol exports", () => {
 Run:
 
 ```bash
-cd /Users/yanjiahui/Desktop/coding-agent-protocol
+cd /Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent-protocol
 pnpm test
 pnpm typecheck
 pnpm build
@@ -423,7 +423,7 @@ Expected: all commands exit 0.
 Run:
 
 ```bash
-cd /Users/yanjiahui/Desktop/coding-agent-protocol
+cd /Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent-protocol
 git add .
 git commit -m "feat: initialize protocol contracts"
 ```
@@ -433,18 +433,18 @@ Expected: commit succeeds.
 ## Task 2: Create CLI Skeleton With FakePiAdapter
 
 **Files:**
-- Create: `/Users/yanjiahui/Desktop/coding-agent-cli/package.json`
-- Create: `/Users/yanjiahui/Desktop/coding-agent-cli/tsconfig.json`
-- Create: `/Users/yanjiahui/Desktop/coding-agent-cli/vitest.config.ts`
-- Create: `/Users/yanjiahui/Desktop/coding-agent-cli/src/cli.ts`
-- Create: `/Users/yanjiahui/Desktop/coding-agent-cli/src/gateway/AgentGateway.ts`
-- Create: `/Users/yanjiahui/Desktop/coding-agent-cli/src/gateway/LocalAgentGateway.ts`
-- Create: `/Users/yanjiahui/Desktop/coding-agent-cli/src/orchestrator/AgentOrchestrator.ts`
-- Create: `/Users/yanjiahui/Desktop/coding-agent-cli/src/pi/PiAdapter.ts`
-- Create: `/Users/yanjiahui/Desktop/coding-agent-cli/src/pi/FakePiAdapter.ts`
-- Create: `/Users/yanjiahui/Desktop/coding-agent-cli/src/commands/run.ts`
-- Create: `/Users/yanjiahui/Desktop/coding-agent-cli/src/ui/renderEvent.ts`
-- Create: `/Users/yanjiahui/Desktop/coding-agent-cli/tests/orchestrator.test.ts`
+- Create: `/Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent-cli/package.json`
+- Create: `/Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent-cli/tsconfig.json`
+- Create: `/Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent-cli/vitest.config.ts`
+- Create: `/Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent-cli/src/cli.ts`
+- Create: `/Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent-cli/src/gateway/AgentGateway.ts`
+- Create: `/Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent-cli/src/gateway/LocalAgentGateway.ts`
+- Create: `/Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent-cli/src/orchestrator/AgentOrchestrator.ts`
+- Create: `/Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent-cli/src/pi/PiAdapter.ts`
+- Create: `/Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent-cli/src/pi/FakePiAdapter.ts`
+- Create: `/Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent-cli/src/commands/run.ts`
+- Create: `/Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent-cli/src/ui/renderEvent.ts`
+- Create: `/Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent-cli/tests/orchestrator.test.ts`
 
 - [ ] **Step 1: Initialize repository**
 
@@ -465,7 +465,7 @@ Expected: repository exists on `main`, dependencies are installed.
 
 - [ ] **Step 2: Add local protocol dependency**
 
-Edit `/Users/yanjiahui/Desktop/coding-agent-cli/package.json`:
+Edit `/Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent-cli/package.json`:
 
 ```json
 {
@@ -498,7 +498,7 @@ Edit `/Users/yanjiahui/Desktop/coding-agent-cli/package.json`:
 
 - [ ] **Step 3: Add TypeScript and Vitest config**
 
-Create `/Users/yanjiahui/Desktop/coding-agent-cli/tsconfig.json`:
+Create `/Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent-cli/tsconfig.json`:
 
 ```json
 {
@@ -515,7 +515,7 @@ Create `/Users/yanjiahui/Desktop/coding-agent-cli/tsconfig.json`:
 }
 ```
 
-Create `/Users/yanjiahui/Desktop/coding-agent-cli/vitest.config.ts`:
+Create `/Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent-cli/vitest.config.ts`:
 
 ```ts
 import { defineConfig } from "vitest/config";
@@ -529,7 +529,7 @@ export default defineConfig({
 
 - [ ] **Step 4: Write adapter and orchestrator contracts**
 
-Create `/Users/yanjiahui/Desktop/coding-agent-cli/src/pi/PiAdapter.ts`:
+Create `/Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent-cli/src/pi/PiAdapter.ts`:
 
 ```ts
 import type { AgentEvent, RunTaskInput } from "@coding-agent/protocol";
@@ -541,7 +541,7 @@ export interface PiAdapter {
 }
 ```
 
-Create `/Users/yanjiahui/Desktop/coding-agent-cli/src/pi/FakePiAdapter.ts`:
+Create `/Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent-cli/src/pi/FakePiAdapter.ts`:
 
 ```ts
 import type { AgentEvent, RunTaskInput } from "@coding-agent/protocol";
@@ -558,7 +558,7 @@ export class FakePiAdapter implements PiAdapter {
 }
 ```
 
-Create `/Users/yanjiahui/Desktop/coding-agent-cli/src/orchestrator/AgentOrchestrator.ts`:
+Create `/Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent-cli/src/orchestrator/AgentOrchestrator.ts`:
 
 ```ts
 import type { AgentEvent, RunTaskInput } from "@coding-agent/protocol";
@@ -588,7 +588,7 @@ export class AgentOrchestrator {
 
 - [ ] **Step 5: Write gateway**
 
-Create `/Users/yanjiahui/Desktop/coding-agent-cli/src/gateway/AgentGateway.ts`:
+Create `/Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent-cli/src/gateway/AgentGateway.ts`:
 
 ```ts
 import type { AgentEvent, RunTaskInput } from "@coding-agent/protocol";
@@ -599,7 +599,7 @@ export interface AgentGateway {
 }
 ```
 
-Create `/Users/yanjiahui/Desktop/coding-agent-cli/src/gateway/LocalAgentGateway.ts`:
+Create `/Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent-cli/src/gateway/LocalAgentGateway.ts`:
 
 ```ts
 import type { AgentEvent, RunTaskInput } from "@coding-agent/protocol";
@@ -621,7 +621,7 @@ export class LocalAgentGateway implements AgentGateway {
 
 - [ ] **Step 6: Write CLI rendering and run command**
 
-Create `/Users/yanjiahui/Desktop/coding-agent-cli/src/ui/renderEvent.ts`:
+Create `/Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent-cli/src/ui/renderEvent.ts`:
 
 ```ts
 import pc from "picocolors";
@@ -653,7 +653,7 @@ export function renderEvent(event: AgentEvent): string {
 }
 ```
 
-Create `/Users/yanjiahui/Desktop/coding-agent-cli/src/commands/run.ts`:
+Create `/Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent-cli/src/commands/run.ts`:
 
 ```ts
 import type { RunTaskInput } from "@coding-agent/protocol";
@@ -680,7 +680,7 @@ export async function runCommand(prompt: string): Promise<void> {
 }
 ```
 
-Create `/Users/yanjiahui/Desktop/coding-agent-cli/src/cli.ts`:
+Create `/Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent-cli/src/cli.ts`:
 
 ```ts
 #!/usr/bin/env node
@@ -703,7 +703,7 @@ await program.parseAsync(process.argv);
 
 - [ ] **Step 7: Write orchestrator test**
 
-Create `/Users/yanjiahui/Desktop/coding-agent-cli/tests/orchestrator.test.ts`:
+Create `/Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent-cli/tests/orchestrator.test.ts`:
 
 ```ts
 import { describe, expect, it } from "vitest";
@@ -742,7 +742,7 @@ describe("AgentOrchestrator", () => {
 Run:
 
 ```bash
-cd /Users/yanjiahui/Desktop/coding-agent-cli
+cd /Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent-cli
 pnpm install
 pnpm test
 pnpm typecheck
@@ -756,7 +756,7 @@ Expected: tests and typecheck pass; CLI prints the simulated event flow.
 Run:
 
 ```bash
-cd /Users/yanjiahui/Desktop/coding-agent-cli
+cd /Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent-cli
 git add .
 git commit -m "feat: initialize cli skeleton"
 ```
@@ -766,12 +766,12 @@ Expected: commit succeeds.
 ## Task 3: Record First Validation Result In Wiki
 
 **Files:**
-- Modify: `/Users/yanjiahui/Desktop/coding-agent/wiki/project-state.md`
-- Modify: `/Users/yanjiahui/Desktop/coding-agent/wiki/technical-plan-mvp.md`
+- Modify: `/Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent/wiki/project-state.md`
+- Modify: `/Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent/wiki/technical-plan-mvp.md`
 
 - [ ] **Step 1: Update project phase status**
 
-Modify `/Users/yanjiahui/Desktop/coding-agent/wiki/project-state.md` after Task 1 and Task 2 complete. Add this section:
+Modify `/Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent/wiki/project-state.md` after Task 1 and Task 2 complete. Add this section:
 
 ````markdown
 ## 执行验证记录
@@ -783,8 +783,8 @@ Modify `/Users/yanjiahui/Desktop/coding-agent/wiki/project-state.md` after Task 
 验证命令：
 
 ```text
-cd /Users/yanjiahui/Desktop/coding-agent-protocol && pnpm test && pnpm typecheck && pnpm build
-cd /Users/yanjiahui/Desktop/coding-agent-cli && pnpm test && pnpm typecheck && pnpm dev run "测试任务"
+cd /Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent-protocol && pnpm test && pnpm typecheck && pnpm build
+cd /Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent-cli && pnpm test && pnpm typecheck && pnpm dev run "测试任务"
 ```
 
 结果：
@@ -800,7 +800,7 @@ cd /Users/yanjiahui/Desktop/coding-agent-cli && pnpm test && pnpm typecheck && p
 
 - [ ] **Step 2: Update MVP technical plan milestone status**
 
-Modify `/Users/yanjiahui/Desktop/coding-agent/wiki/technical-plan-mvp.md`. Under `## 里程碑`, add this status summary before `### M1：协议仓库`:
+Modify `/Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent/wiki/technical-plan-mvp.md`. Under `## 里程碑`, add this status summary before `### M1：协议仓库`:
 
 ```markdown
 当前执行状态：
@@ -819,7 +819,7 @@ After Task 1 and Task 2 complete, change M1 and M2 to `已完成`.
 Run:
 
 ```bash
-cd /Users/yanjiahui/Desktop/coding-agent
+cd /Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent
 git diff --check
 rg -n 'TO''DO|TB''D|待''定|占''位' wiki docs || true
 ```
@@ -831,7 +831,7 @@ Expected: no whitespace errors and no placeholder terms.
 Run:
 
 ```bash
-cd /Users/yanjiahui/Desktop/coding-agent
+cd /Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent
 git add wiki/project-state.md wiki/technical-plan-mvp.md
 git commit -m "docs: record MVP validation progress"
 ```

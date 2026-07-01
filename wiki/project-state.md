@@ -23,6 +23,19 @@
 - [技术设计](technical-design.md)：记录 AgentGateway、AgentOrchestrator、PiAdapter、Tool Boundary 和 Trace Store。
 - [第一阶段技术方案](technical-plan-mvp.md)：记录 MVP 技术路线、仓库拆分、模块设计、里程碑和验收标准。
 
+## 工作区布局
+
+项目使用一个父级工作区目录管理多个独立 Git 仓库：
+
+```text
+/Users/yanjiahui/Desktop/coding-agent-workspace/
+  coding-agent/           # 知识库和总控仓库
+  coding-agent-protocol/  # 协议类型仓库
+  coding-agent-cli/       # CLI 验证壳仓库
+```
+
+这些仓库保持 Git 历史独立，不合并成 monorepo。
+
 ## Wiki 维护规则
 
 `wiki/` 是项目知识库，也是阶段信息的事实来源。
@@ -71,8 +84,8 @@ docs: record validation result
 
 实现仓库：
 
-- `/Users/yanjiahui/Desktop/coding-agent-protocol`
-- `/Users/yanjiahui/Desktop/coding-agent-cli`
+- `/Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent-protocol`
+- `/Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent-cli`
 
 提交记录：
 
@@ -82,8 +95,8 @@ docs: record validation result
 验证命令：
 
 ```text
-cd /Users/yanjiahui/Desktop/coding-agent-protocol && pnpm test && pnpm typecheck && pnpm build
-cd /Users/yanjiahui/Desktop/coding-agent-cli && pnpm test && pnpm typecheck && pnpm dev run "测试任务" && pnpm build
+cd /Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent-protocol && pnpm test && pnpm typecheck && pnpm build
+cd /Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent-cli && pnpm test && pnpm typecheck && pnpm dev run "测试任务" && pnpm build
 ```
 
 结果：
