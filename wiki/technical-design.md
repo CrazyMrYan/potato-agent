@@ -2,12 +2,12 @@
 
 ## 设计目标
 
-第一阶段先做一个可实战验证的 CLI 编码智能体，不做桌面端。CLI 只承担宿主和展示职责，核心能力交给 Pi。
+第一阶段先做一个可实战验证的 CLI 编码智能体，不做桌面端。CLI 只承担宿主和展示职责，Pi 负责底层 agent loop，本项目自己的产品能力沉在智能体编排层。
 
 第一版需要验证：
 
 - 能在本地仓库中接收任务。
-- 能调用 Pi 完成任务循环。
+- 能通过智能体编排层调用 Pi 完成任务循环。
 - 能把智能体进展转换成用户可理解的事件。
 - 能展示涉及文件和 diff。
 - 能在关键动作前请求确认。
@@ -17,9 +17,28 @@
 
 采用“进程内优先，协议边界先行”的方案。
 
-第一版直接在 CLI 进程内调用 Pi SDK，减少工程复杂度。与此同时，在 CLI 和 Pi 之间引入 `AgentGateway` 作为稳定边界。CLI 不直接依赖 Pi 的内部事件和对象结构，而是依赖我们自己的任务协议。
+第一版直接在 CLI 进程内调用 Pi SDK，减少工程复杂度。与此同时，在 CLI 和 Pi 之间引入 `AgentGateway`、`AgentOrchestrator` 和 `PiAdapter`。
 
-后续如果需要把 Pi runtime 拆成独立进程，只需要增加 `RpcPiGateway`，CLI 和上层交互不需要重写。
+`AgentGateway` 是宿主入口，面向 CLI 和后续桌面端。`AgentOrchestrator` 是本项目自己的产品能力层，负责任务生命周期、上下文策略、权限策略、验证策略、diff 策略和 trace。`PiAdapter` 负责把我们的任务、工具和策略翻译给 Pi，并把 Pi 的输出转换成我们的事件模型。
+
+CLI 不直接依赖 Pi 的内部事件和对象结构，而是依赖我们自己的任务协议。
+
+后续如果需要把 Pi runtime 拆成独立进程，只需要增加 `RpcPiAdapter` 或独立 runtime gateway。CLI、`AgentGateway` 和大部分编排逻辑不需要重写。
+
+## 能力放置原则
+
+Pi 是底层执行引擎，不是产品能力的唯一承载点。后续要在 Pi 上面叠加能力时，优先放在 `AgentOrchestrator`。
+
+| 能力类型 | 放置层级 | 原因 |
+| --- | --- | --- |
+| 命令解析、终端展示、用户输入 | CLI Host | 只和当前宿主形态有关 |
+| 对外任务接口、事件流入口 | AgentGateway | 保持 CLI、桌面端和未来宿主的统一入口 |
+| 任务生命周期、模式、权限、上下文、验证、diff、trace | AgentOrchestrator | 这是本项目自己的长期产品能力 |
+| Pi SDK 调用、Pi 事件转换、Pi 工具注册 | PiAdapter | 隔离 Pi 的具体 API 和运行形态 |
+| 推理、规划、工具调用循环 | Pi | 复用 Pi 的底层 agent 能力 |
+| 文件、Git、Shell、搜索等本地访问 | Tool Boundary | 统一权限、审计和错误处理 |
+
+判断规则：如果一个能力换掉 Pi 后仍然应该存在，就不要放进 Pi 适配器里，而应该放进 `AgentOrchestrator` 或更上层。
 
 ## 总体结构
 
@@ -27,8 +46,9 @@
 flowchart TB
     User["开发者"] --> CLI["CLI Host<br/>任务输入 / 进度展示 / diff 展示 / 用户确认"]
     CLI --> Gateway["AgentGateway<br/>任务协议 / 事件转换 / 生命周期控制"]
-    Gateway --> InProc["InProcessPiGateway<br/>第一版：进程内调用 Pi SDK"]
-    Gateway -. "后续可替换" .-> RPC["RpcPiGateway<br/>本地子进程 / RPC / JSON 事件流"]
+    Gateway --> Orchestrator["AgentOrchestrator<br/>任务生命周期 / 权限 / 上下文 / 验证 / diff / trace"]
+    Orchestrator --> InProc["InProcessPiAdapter<br/>第一版：进程内调用 Pi SDK"]
+    Orchestrator -. "后续可替换" .-> RPC["RpcPiAdapter<br/>本地子进程 / RPC / JSON 事件流"]
 
     InProc --> PiSDK["Pi SDK / Pi Coding Agent"]
     RPC --> PiProc["Pi Runtime 子进程"]
@@ -41,7 +61,7 @@ flowchart TB
     ToolBoundary --> ShellTools["Shell 工具<br/>命令 / 测试 / 构建"]
     ToolBoundary --> GitTools["Git 工具<br/>状态 / diff / 提交边界"]
 
-    Gateway --> TraceStore["Trace Store<br/>任务 / 事件 / 工具调用 / diff / 验证结果"]
+    Orchestrator --> TraceStore["Trace Store<br/>任务 / 事件 / 工具调用 / diff / 验证结果"]
 ```
 
 ## 模块职责
@@ -68,7 +88,7 @@ agent trace
 
 ### AgentGateway
 
-`AgentGateway` 是我们自己的稳定协议层。它隔离 CLI 和 Pi，避免上层直接绑定 Pi 的具体 API。
+`AgentGateway` 是我们自己的宿主入口。它隔离 CLI、桌面端和内部实现，避免上层直接绑定 Pi 的具体 API。
 
 它负责：
 
@@ -88,9 +108,27 @@ interface AgentGateway {
 }
 ```
 
-### InProcessPiGateway
+### AgentOrchestrator
 
-`InProcessPiGateway` 是第一版实际实现。它在 CLI 进程内调用 Pi SDK，并把 Pi 的事件、工具调用和结果转换成 `AgentEvent`。
+`AgentOrchestrator` 是本项目自己的核心产品能力层。它位于 `AgentGateway` 和 `PiAdapter` 之间。
+
+它负责：
+
+- 管理任务生命周期：创建、运行、取消、失败、完成。
+- 选择任务模式：第一版只有 `run`，后续可扩展 `ask`、`plan`、`review`、`fix-test`。
+- 管理上下文策略：工作目录、显式文件、搜索结果、Git 状态、上下文压缩。
+- 管理权限策略：决定工具动作是否需要确认。
+- 管理 diff 策略：何时生成 diff、何时展示 diff、何时允许继续执行。
+- 管理验证策略：何时运行验证命令、失败后是否继续尝试。
+- 管理预算策略：最大轮次、最大工具调用次数、命令超时。
+- 写入 trace：任务、步骤、工具调用、确认请求、diff、验证结果。
+- 整理最终结果：变更摘要、验证结论、风险和未完成事项。
+
+这层是我们在 Pi 之上“套能力”的主要位置。Pi 可以替换，CLI 可以替换，但这层沉淀的是项目自己的产品模型和工程策略。
+
+### InProcessPiAdapter
+
+`InProcessPiAdapter` 是第一版实际 Pi 适配器。它在 CLI 进程内调用 Pi SDK，并把 Pi 的事件、工具调用和结果转换成 `AgentEvent`。
 
 它负责：
 
@@ -99,18 +137,19 @@ interface AgentGateway {
 - 注入任务上下文。
 - 转换 Pi 事件。
 - 捕获错误。
-- 把最终结果返回给 CLI。
+- 把最终结果返回给 `AgentOrchestrator`。
 
-### RpcPiGateway
+### RpcPiAdapter
 
-`RpcPiGateway` 不在第一版实现，但协议要为它留出空间。
+`RpcPiAdapter` 不在第一版实现，但协议要为它留出空间。
 
 未来它可以通过本地子进程运行 Pi runtime：
 
 ```text
 CLI Host
   -> AgentGateway
-  -> RpcPiGateway
+  -> AgentOrchestrator
+  -> RpcPiAdapter
   -> Pi Runtime 子进程
   -> JSON event stream / RPC
 ```
@@ -200,31 +239,44 @@ sequenceDiagram
     participant U as 开发者
     participant C as CLI Host
     participant G as AgentGateway
-    participant P as InProcessPiGateway
+    participant O as AgentOrchestrator
+    participant P as InProcessPiAdapter
     participant T as Tool Boundary
     participant S as Trace Store
 
     U->>C: agent run "任务描述"
     C->>G: runTask(input)
-    G->>S: 记录 TaskStarted
-    G->>P: 启动 Pi 任务
-    P->>T: 调用搜索 / 文件 / Git 工具
-    T->>S: 记录工具调用事件
+    G->>O: 创建任务
+    O->>S: 记录 TaskStarted
+    O->>P: 启动 Pi 任务
+    P->>T: 请求搜索 / 文件 / Git 工具动作
+    T->>O: 请求权限判断
+    O->>S: 记录工具调用事件
+    O-->>T: 允许执行
     T-->>P: 返回工具结果
-    P-->>G: 输出标准化事件
+    P-->>O: 输出 Pi 事件
+    O-->>G: 输出标准化事件
     G-->>C: 推送进度事件
     C-->>U: 展示当前步骤
-    P->>T: 产生文件变更
-    T->>S: 记录 diff
+    P->>T: 请求产生文件变更
+    T->>O: 请求写入确认和 diff 记录
+    O->>S: 记录 diff
+    O-->>T: 确认后允许写入
+    T-->>P: 返回变更结果
+    O-->>G: DiffProduced
     G-->>C: DiffProduced
     C-->>U: 展示 diff
+    O-->>G: ApprovalRequested
     G-->>C: ApprovalRequested
     C->>U: 请求确认
     U-->>C: 确认继续
     C-->>G: 返回确认结果
+    G-->>O: 返回确认结果
     P->>T: 运行验证命令
-    T->>S: 记录验证结果
-    P-->>G: 任务完成
+    T->>O: 返回验证结果
+    O->>S: 记录验证结果
+    P-->>O: 任务完成
+    O-->>G: TaskFinished
     G-->>C: TaskFinished
     C-->>U: 输出最终总结
 ```
@@ -245,7 +297,7 @@ sequenceDiagram
 | 删除文件 | 强确认 |
 | Git 提交 | 第一版不自动执行 |
 
-权限策略属于 `Tool Boundary`，不属于 CLI。CLI 只负责把确认请求展示给用户。
+权限策略由 `AgentOrchestrator` 决策，由 `Tool Boundary` 执行，不属于 CLI。CLI 只负责把确认请求展示给用户。
 
 ## 错误处理
 
@@ -284,13 +336,14 @@ sequenceDiagram
 
 - 建立 CLI 项目。
 - 定义 `AgentGateway`。
+- 定义 `AgentOrchestrator`。
 - 定义 `AgentEvent`。
 - 支持 `agent run "<任务描述>"`。
 - 能输出模拟事件流。
 
 ### M2：接入 Pi
 
-- 实现 `InProcessPiGateway`。
+- 实现 `InProcessPiAdapter`。
 - 能启动 Pi 任务。
 - 能注册最小工具集。
 - 能把 Pi 输出转换成标准事件。
@@ -313,7 +366,9 @@ sequenceDiagram
 
 选择进程内 Pi SDK 是为了快速验证，不是最终绑定。
 
-保留 `AgentGateway` 是为了避免 CLI、桌面端和未来 runtime 直接耦合 Pi 内部结构。
+保留 `AgentGateway` 和 `AgentOrchestrator` 是为了避免 CLI、桌面端和未来 runtime 直接耦合 Pi 内部结构。
+
+`AgentOrchestrator` 是最重要的长期资产。任务模型、权限模型、上下文策略、验证策略、diff 策略和 trace 都应该沉淀在这里，而不是散落在 CLI 或 Pi 适配器里。
 
 第一版 trace 用文件而不是数据库，是为了减少启动成本。等事件量、查询需求和桌面端需求明确后，再考虑 SQLite。
 
