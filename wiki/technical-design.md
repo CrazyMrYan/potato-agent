@@ -1,0 +1,320 @@
+# 技术设计
+
+## 设计目标
+
+第一阶段先做一个可实战验证的 CLI 编码智能体，不做桌面端。CLI 只承担宿主和展示职责，核心能力交给 Pi。
+
+第一版需要验证：
+
+- 能在本地仓库中接收任务。
+- 能调用 Pi 完成任务循环。
+- 能把智能体进展转换成用户可理解的事件。
+- 能展示涉及文件和 diff。
+- 能在关键动作前请求确认。
+- 能记录一次任务的运行轨迹，便于复盘和调试。
+
+## 核心判断
+
+采用“进程内优先，协议边界先行”的方案。
+
+第一版直接在 CLI 进程内调用 Pi SDK，减少工程复杂度。与此同时，在 CLI 和 Pi 之间引入 `AgentGateway` 作为稳定边界。CLI 不直接依赖 Pi 的内部事件和对象结构，而是依赖我们自己的任务协议。
+
+后续如果需要把 Pi runtime 拆成独立进程，只需要增加 `RpcPiGateway`，CLI 和上层交互不需要重写。
+
+## 总体结构
+
+```mermaid
+flowchart TB
+    User["开发者"] --> CLI["CLI Host<br/>任务输入 / 进度展示 / diff 展示 / 用户确认"]
+    CLI --> Gateway["AgentGateway<br/>任务协议 / 事件转换 / 生命周期控制"]
+    Gateway --> InProc["InProcessPiGateway<br/>第一版：进程内调用 Pi SDK"]
+    Gateway -. "后续可替换" .-> RPC["RpcPiGateway<br/>本地子进程 / RPC / JSON 事件流"]
+
+    InProc --> PiSDK["Pi SDK / Pi Coding Agent"]
+    RPC --> PiProc["Pi Runtime 子进程"]
+
+    PiSDK --> ToolBoundary["Tool Boundary<br/>权限 / 审计 / 统一工具接口"]
+    PiProc --> ToolBoundary
+
+    ToolBoundary --> FileTools["文件工具<br/>读取 / 写入 / Patch"]
+    ToolBoundary --> SearchTools["搜索工具<br/>文件匹配 / 内容检索"]
+    ToolBoundary --> ShellTools["Shell 工具<br/>命令 / 测试 / 构建"]
+    ToolBoundary --> GitTools["Git 工具<br/>状态 / diff / 提交边界"]
+
+    Gateway --> TraceStore["Trace Store<br/>任务 / 事件 / 工具调用 / diff / 验证结果"]
+```
+
+## 模块职责
+
+### CLI Host
+
+CLI 是第一阶段的产品验证壳。它不实现智能体逻辑，只负责：
+
+- 解析命令参数。
+- 选择工作目录。
+- 发起任务。
+- 展示进度事件。
+- 展示 diff。
+- 处理用户确认。
+- 输出最终总结。
+
+CLI 面向的是开发者，所以第一版优先支持少量高频命令：
+
+```text
+agent run "<任务描述>"
+agent diff
+agent trace
+```
+
+### AgentGateway
+
+`AgentGateway` 是我们自己的稳定协议层。它隔离 CLI 和 Pi，避免上层直接绑定 Pi 的具体 API。
+
+它负责：
+
+- 创建任务。
+- 启动任务执行。
+- 输出标准化事件流。
+- 暴露确认请求。
+- 暴露任务取消能力。
+- 汇总最终结果。
+
+第一版建议接口形态：
+
+```ts
+interface AgentGateway {
+  runTask(input: RunTaskInput): AsyncIterable<AgentEvent>;
+  cancelTask(taskId: string): Promise<void>;
+}
+```
+
+### InProcessPiGateway
+
+`InProcessPiGateway` 是第一版实际实现。它在 CLI 进程内调用 Pi SDK，并把 Pi 的事件、工具调用和结果转换成 `AgentEvent`。
+
+它负责：
+
+- 初始化 Pi。
+- 注册工具。
+- 注入任务上下文。
+- 转换 Pi 事件。
+- 捕获错误。
+- 把最终结果返回给 CLI。
+
+### RpcPiGateway
+
+`RpcPiGateway` 不在第一版实现，但协议要为它留出空间。
+
+未来它可以通过本地子进程运行 Pi runtime：
+
+```text
+CLI Host
+  -> AgentGateway
+  -> RpcPiGateway
+  -> Pi Runtime 子进程
+  -> JSON event stream / RPC
+```
+
+这条路线适合桌面端、多任务隔离、runtime 重启和长期后台任务。
+
+### Tool Boundary
+
+工具边界是安全和可观测性的核心。Pi 不应该直接无限制访问本地能力，而是通过我们注册的工具进入本地系统。
+
+第一版工具包括：
+
+- 文件读取
+- 文件写入或 patch
+- 代码搜索
+- Shell 命令
+- Git 状态
+- Git diff
+- 验证命令
+
+每个工具调用都要产生事件，写入 trace，并根据权限策略判断是否需要确认。
+
+### Trace Store
+
+Trace Store 记录一次任务的完整过程。第一版可以先用文件落盘，不急于引入数据库。
+
+建议结构：
+
+```text
+.coding-agent/
+  traces/
+    <task-id>.jsonl
+```
+
+每一行是一个事件，便于流式写入和后续分析。
+
+## 核心数据模型
+
+### RunTaskInput
+
+```ts
+type RunTaskInput = {
+  taskId: string;
+  workspacePath: string;
+  prompt: string;
+  mode: "run";
+  approvalMode: "manual" | "auto-readonly";
+};
+```
+
+### AgentEvent
+
+```ts
+type AgentEvent =
+  | TaskStartedEvent
+  | StepStartedEvent
+  | ToolCallStartedEvent
+  | ToolCallFinishedEvent
+  | ApprovalRequestedEvent
+  | DiffProducedEvent
+  | VerificationStartedEvent
+  | VerificationFinishedEvent
+  | TaskFinishedEvent
+  | TaskFailedEvent;
+```
+
+事件模型要稳定。即使后续 Pi 的内部事件变了，CLI 也应该尽量不受影响。
+
+### ChangeSet
+
+```ts
+type ChangeSet = {
+  files: Array<{
+    path: string;
+    status: "added" | "modified" | "deleted" | "renamed";
+    diff?: string;
+  }>;
+};
+```
+
+`ChangeSet` 是 CLI 展示 diff、用户确认和最终总结的核心对象。
+
+## 任务执行流程
+
+```mermaid
+sequenceDiagram
+    participant U as 开发者
+    participant C as CLI Host
+    participant G as AgentGateway
+    participant P as InProcessPiGateway
+    participant T as Tool Boundary
+    participant S as Trace Store
+
+    U->>C: agent run "任务描述"
+    C->>G: runTask(input)
+    G->>S: 记录 TaskStarted
+    G->>P: 启动 Pi 任务
+    P->>T: 调用搜索 / 文件 / Git 工具
+    T->>S: 记录工具调用事件
+    T-->>P: 返回工具结果
+    P-->>G: 输出标准化事件
+    G-->>C: 推送进度事件
+    C-->>U: 展示当前步骤
+    P->>T: 产生文件变更
+    T->>S: 记录 diff
+    G-->>C: DiffProduced
+    C-->>U: 展示 diff
+    G-->>C: ApprovalRequested
+    C->>U: 请求确认
+    U-->>C: 确认继续
+    C-->>G: 返回确认结果
+    P->>T: 运行验证命令
+    T->>S: 记录验证结果
+    P-->>G: 任务完成
+    G-->>C: TaskFinished
+    C-->>U: 输出最终总结
+```
+
+## 权限策略
+
+第一版用简单策略，不做复杂沙箱。
+
+默认建议：
+
+| 动作 | 策略 |
+| --- | --- |
+| 读取文件 | 默认允许 |
+| 搜索代码 | 默认允许 |
+| 查看 Git 状态 / diff | 默认允许 |
+| 写文件 / patch | 需要确认 |
+| 执行 Shell 命令 | 需要确认 |
+| 删除文件 | 强确认 |
+| Git 提交 | 第一版不自动执行 |
+
+权限策略属于 `Tool Boundary`，不属于 CLI。CLI 只负责把确认请求展示给用户。
+
+## 错误处理
+
+错误统一转换成事件，而不是只打印异常。
+
+第一版至少区分：
+
+- Pi 初始化失败
+- 工作目录不存在
+- 非 Git 仓库或 Git 不可用
+- 工具调用失败
+- 用户拒绝确认
+- 验证命令失败
+- 任务被取消
+- 未知异常
+
+每类错误都要进入 trace，并在最终总结里出现。
+
+## 第一阶段不做
+
+第一阶段明确不做：
+
+- 桌面端 UI
+- 多智能体
+- 云端执行
+- 容器沙箱
+- 长期后台任务
+- 自动 Git 提交
+- 复杂权限系统
+- 完整插件市场
+- 多语言 UI
+
+## 里程碑
+
+### M1：协议和 CLI 骨架
+
+- 建立 CLI 项目。
+- 定义 `AgentGateway`。
+- 定义 `AgentEvent`。
+- 支持 `agent run "<任务描述>"`。
+- 能输出模拟事件流。
+
+### M2：接入 Pi
+
+- 实现 `InProcessPiGateway`。
+- 能启动 Pi 任务。
+- 能注册最小工具集。
+- 能把 Pi 输出转换成标准事件。
+
+### M3：工具和 diff
+
+- 支持读取文件、搜索、Git diff。
+- 支持 patch 或文件写入。
+- 能展示 `ChangeSet`。
+- 写操作前请求确认。
+
+### M4：验证和 trace
+
+- 支持运行测试或用户指定命令。
+- 记录 JSONL trace。
+- 支持 `agent trace` 查看最近任务。
+- 输出最终总结。
+
+## 设计取舍
+
+选择进程内 Pi SDK 是为了快速验证，不是最终绑定。
+
+保留 `AgentGateway` 是为了避免 CLI、桌面端和未来 runtime 直接耦合 Pi 内部结构。
+
+第一版 trace 用文件而不是数据库，是为了减少启动成本。等事件量、查询需求和桌面端需求明确后，再考虑 SQLite。
+
+第一版权限靠确认流程，不做容器级隔离。这样可以先验证开发者 workflow，后续再根据真实风险决定是否引入沙箱。

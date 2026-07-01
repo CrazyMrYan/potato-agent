@@ -17,3 +17,4 @@
 从这里开始：
 
 - [架构设计](architecture.md)
+- [技术设计](technical-design.md)
