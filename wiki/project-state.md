@@ -162,10 +162,12 @@ pnpm --filter @coding-agent/cli dev chat \
 - 新增 `core/src/session/AgentSession.ts` 和 `core/src/session/AgentSessionFactory.ts`。
 - `chat` 兼容命令改为通过 `AgentSessionFactory` 创建会话，不再直接 new Pi session adapter。
 - CLI 引入 Vue TUI，默认 `agent` 入口进入交互式界面。
-- TUI 默认 workspace 使用启动目录。
+- TUI 默认 workspace 会从启动目录向上寻找 Git 根目录；从 `cli/dist` 直接启动也应落到项目根。
 - TUI 启动时确保生成 `<workspace>/.coding-agent/config.json`。
 - TUI 支持 `Ctrl+M` 打开模型配置选择器，用方向键选择 provider 和 model，并可输入 API Key。
-- TUI 支持 `Ctrl+W` 查看工作区、`Ctrl+C` 退出；兼容 `/workspace`、`/model`、`/exit`。
+- TUI 支持输入 `/` 弹出命令候选菜单，可选择 `/model`、`/workspace`、`/exit`。
+- TUI 支持 `Ctrl+W` 查看工作区、`Ctrl+C` 退出。
+- Commander 只保留为默认入口、`run` 和 `chat` 兼容命令的薄路由层，模型配置不再放在默认启动参数里。
 
 验证结果：
 

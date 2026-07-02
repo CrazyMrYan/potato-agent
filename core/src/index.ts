@@ -1,6 +1,7 @@
 export type { AgentConfig, ResolvedAgentConfig } from "./config/AgentConfig.js";
 export { mergeAgentConfig } from "./config/AgentConfig.js";
 export { ensureDefaultAgentConfig, FileAgentConfigStore, type AgentConfigStore } from "./config/AgentConfigStore.js";
+export { resolveDefaultWorkspacePath } from "./config/Workspace.js";
 export type { AgentGateway } from "./gateway/AgentGateway.js";
 export { LocalAgentGateway } from "./gateway/LocalAgentGateway.js";
 export { AgentOrchestrator } from "./orchestrator/AgentOrchestrator.js";

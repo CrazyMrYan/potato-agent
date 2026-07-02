@@ -25,14 +25,13 @@ export const AgentTui = defineComponent<AgentTuiProps>(
     const session = ref<AgentSession>();
     const busy = ref(false);
     const draft = ref("");
-    const mode = ref<"chat" | "model-provider" | "model-model" | "model-key">("chat");
+    const mode = ref<"chat" | "command" | "model-provider" | "model-model" | "model-key">("chat");
+    const selectedCommand = ref(0);
     const selectedProvider = ref(0);
     const selectedModel = ref(0);
     const pendingApiKey = ref("");
     const lines = ref<string[]>([
-      `workspace: ${config.value.workspacePath ?? process.cwd()}`,
-      `model: ${formatModel(config.value)}`,
-      "快捷键：Ctrl+M 配置模型，Ctrl+W 查看工作区，Ctrl+C 退出。"
+      "准备就绪。输入任务开始，输入 / 打开命令菜单。"
     ]);
 
     onBeforeUnmount(() => {
@@ -52,7 +51,13 @@ export const AgentTui = defineComponent<AgentTuiProps>(
       }
 
       if ((key.ctrl && input === "m") || (mode.value === "chat" && draft.value === "/model" && key.return)) {
+        draft.value = "";
         enterModelProviderMode();
+        return;
+      }
+
+      if (mode.value === "command") {
+        handleCommandInput(key);
         return;
       }
 
@@ -70,13 +75,53 @@ export const AgentTui = defineComponent<AgentTuiProps>(
 
       if (key.backspace || key.delete) {
         draft.value = draft.value.slice(0, -1);
+        if (!draft.value.startsWith("/")) {
+          mode.value = "chat";
+        }
         return;
       }
 
       if (input) {
         draft.value += input;
+        if (draft.value.startsWith("/")) {
+          mode.value = "command";
+          selectedCommand.value = 0;
+        }
       }
     });
+
+    function handleCommandInput(key: { upArrow: boolean; downArrow: boolean; return: boolean; escape: boolean; backspace: boolean; delete: boolean }): void {
+      if (key.escape) {
+        draft.value = "";
+        mode.value = "chat";
+        return;
+      }
+
+      if (key.upArrow) {
+        selectedCommand.value = wrap(selectedCommand.value - 1, commandOptions.length);
+        return;
+      }
+
+      if (key.downArrow) {
+        selectedCommand.value = wrap(selectedCommand.value + 1, commandOptions.length);
+        return;
+      }
+
+      if (key.backspace || key.delete) {
+        draft.value = draft.value.slice(0, -1);
+        if (!draft.value.startsWith("/")) {
+          mode.value = "chat";
+        }
+        return;
+      }
+
+      if (key.return) {
+        const command = commandOptions[selectedCommand.value].command;
+        draft.value = "";
+        mode.value = "chat";
+        void handlePrompt(command);
+      }
+    }
 
     function enterModelProviderMode(): void {
       mode.value = "model-provider";
@@ -86,7 +131,7 @@ export const AgentTui = defineComponent<AgentTuiProps>(
       const modelIndex = models.findIndex((model) => model === config.value.model);
       selectedModel.value = modelIndex >= 0 ? modelIndex : 0;
       pendingApiKey.value = config.value.apiKey ?? "";
-      appendLine("模型配置：选择 provider，↑/↓ 切换，Enter 确认，Esc 取消。");
+      appendLine("打开模型配置。");
     }
 
     function handleModelInput(input: string, key: { upArrow: boolean; downArrow: boolean; return: boolean; escape: boolean; backspace: boolean; delete: boolean }): void {
@@ -108,7 +153,6 @@ export const AgentTui = defineComponent<AgentTuiProps>(
         if (key.return) {
           mode.value = "model-model";
           selectedModel.value = 0;
-          appendLine("模型配置：选择 model，↑/↓ 切换，Enter 确认。");
         }
         return;
       }
@@ -125,7 +169,6 @@ export const AgentTui = defineComponent<AgentTuiProps>(
         }
         if (key.return) {
           mode.value = "model-key";
-          appendLine("模型配置：输入 API Key，Enter 保存；留空则继续使用环境变量。");
         }
         return;
       }
@@ -161,7 +204,7 @@ export const AgentTui = defineComponent<AgentTuiProps>(
         session.value = undefined;
       }
       await props.saveConfig?.(nextConfig);
-      appendLine(`model: ${formatModel(nextConfig)}`);
+      appendLine(`模型已配置：${formatModel(nextConfig)}`);
     }
 
     async function handlePrompt(prompt: string): Promise<void> {
@@ -237,16 +280,26 @@ export const AgentTui = defineComponent<AgentTuiProps>(
     }
 
     return () =>
-      h(Box, { flexDirection: "column" }, () => [
-        h(Box, { borderStyle: "single", paddingX: 1 }, () => [
-          h(Text, null, () => `Agent | ${config.value.workspacePath ?? process.cwd()} | ${formatModel(config.value)}`)
+      h(Box, { flexDirection: "column", paddingX: 1 }, () => [
+        h(Box, { justifyContent: "space-between" }, () => [
+          h(Text, { bold: true, color: "cyan" }, () => "Coding Agent"),
+          h(Text, { dimColor: true }, () => `${busy.value ? "运行中" : "空闲"} · ${formatModel(config.value)}`)
         ]),
-        h(Box, { flexDirection: "column", marginTop: 1 }, () => [
-          ...lines.value.slice(-18).map((line) => h(Text, null, () => line)),
+        h(Box, { marginTop: 1, borderStyle: "round", borderColor: "gray", paddingX: 1, flexDirection: "column" }, () => [
+          h(Text, { dimColor: true }, () => "WORKSPACE"),
+          h(Text, null, () => config.value.workspacePath ?? process.cwd())
+        ]),
+        h(Box, { marginTop: 1, borderStyle: "round", borderColor: "cyan", paddingX: 1, flexDirection: "column", minHeight: 10 }, () => [
+          h(Text, { dimColor: true }, () => "EVENTS"),
+          ...lines.value.slice(-14).map((line) => h(Text, null, () => line)),
+          ...renderCommandMenu(mode.value, selectedCommand.value),
           ...renderModelPicker(mode.value, selectedProvider.value, selectedModel.value, pendingApiKey.value)
         ]),
+        h(Box, { marginTop: 1, borderStyle: "round", borderColor: mode.value === "chat" ? "green" : "yellow", paddingX: 1 }, () => [
+          h(Text, null, () => `${inputLabel(mode.value)} ${mode.value === "chat" || mode.value === "command" ? draft.value : modelPrompt(mode.value)}`)
+        ]),
         h(Box, { marginTop: 1 }, () => [
-          h(Text, null, () => `${busy.value ? "…" : ">"} ${mode.value === "chat" ? draft.value : modelPrompt(mode.value)}`)
+          h(Text, { dimColor: true }, () => "Ctrl+M 模型 · Ctrl+W 工作区 · 输入 / 打开命令 · Ctrl+C 退出")
         ])
       ]);
   },
@@ -254,6 +307,25 @@ export const AgentTui = defineComponent<AgentTuiProps>(
     props: ["config", "createSession", "saveConfig"]
   }
 );
+
+const commandOptions = [
+  { command: "/model", label: "/model", description: "配置 provider、model 和 API Key" },
+  { command: "/workspace", label: "/workspace", description: "显示当前工作区" },
+  { command: "/exit", label: "/exit", description: "退出 TUI" }
+];
+
+function renderCommandMenu(mode: string, selectedCommand: number) {
+  if (mode !== "command") {
+    return [];
+  }
+
+  return [
+    h(Text, { dimColor: true }, () => "COMMANDS"),
+    ...commandOptions.map((option, index) =>
+      h(Text, { color: index === selectedCommand ? "green" : undefined }, () => `${index === selectedCommand ? ">" : " "} ${option.label}  ${option.description}`)
+    )
+  ];
+}
 
 function renderModelPicker(mode: string, selectedProvider: number, selectedModel: number, pendingApiKey: string) {
   if (mode === "chat") {
@@ -281,6 +353,16 @@ function modelPrompt(mode: string): string {
     return "选择 model";
   }
   return "输入 API Key";
+}
+
+function inputLabel(mode: string): string {
+  if (mode === "command") {
+    return "/";
+  }
+  if (mode === "chat") {
+    return ">";
+  }
+  return "配置>";
 }
 
 function formatModel(config: AgentConfig): string {

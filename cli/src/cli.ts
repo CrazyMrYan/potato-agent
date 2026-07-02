@@ -11,17 +11,9 @@ program
   .name("agent")
   .description("编码智能体 CLI")
   .version("0.1.0")
-  .option("--provider <provider>", "模型供应商，例如 deepseek")
-  .option("--model <model>", "模型名称，例如 deepseek-reasoner")
-  .option("--api-key <apiKey>", "模型 API Key，也可使用对应环境变量")
-  .option("--timeout-ms <ms>", "Pi RPC 每轮等待超时时间", "120000")
-  .action(async (options: Record<string, string>) => {
+  .action(async () => {
     try {
       await runTuiCommand({
-        provider: options.provider,
-        model: options.model,
-        apiKey: options.apiKey,
-        timeoutMs: Number(options.timeoutMs),
         cwd: process.cwd()
       });
     } catch (error) {

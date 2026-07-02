@@ -431,15 +431,16 @@ agent
 
 行为：
 
-1. 默认 workspace 使用当前目录。
+1. 默认 workspace 从启动目录向上寻找 Git 根目录，找不到 Git 根时才使用当前目录。
 2. 进入 Vue TUI。
 3. 如果 provider、model 或 API Key 缺失，在 TUI 内提示运行时配置。
 4. TUI 启动时确保生成 `<workspace>/.coding-agent/config.json`。
 5. 用户通过 `Ctrl+M` 打开模型配置选择器，用方向键选择 provider 和 model，并可输入 API Key；配置保存后写回 workspace 配置文件。
 6. 用户输入任务后，TUI 通过 `@coding-agent/core` 创建同一个 Pi RPC 会话。
 7. 每轮实时展示 step、assistant delta、工具调用和最终模型输出。
-8. `Ctrl+W` 显示当前工作区。
-9. `Ctrl+C` 退出。
+8. 输入 `/` 会弹出命令候选菜单，可以选择 `/model`、`/workspace`、`/exit`。
+9. `Ctrl+W` 显示当前工作区。
+10. `Ctrl+C` 退出。
 
 ### agent run
 
@@ -637,12 +638,13 @@ FakePiAdapter
 - 运行时模型配置。
 - `AgentConfig` 和 core 配置读取/解析。
 - `AgentSessionFactory`，让 CLI 不直接创建 Pi session adapter。
-- 简化 CLI 默认命令，workspace 默认使用当前目录。
+- 简化 CLI 默认命令，workspace 默认解析到 Git 根目录。
 
 验收：
 
 - `agent` 不传参数即可进入 TUI。
 - TUI 可以在运行时选择 provider、model 并输入 API Key。
+- 输入 `/` 可以显示命令候选菜单。
 - TUI 可以发送多轮任务到同一个 core session。
 - `agent run` 和 `agent chat` 兼容命令继续可用。
 - `pnpm test`、`pnpm typecheck`、`pnpm build` 通过。
