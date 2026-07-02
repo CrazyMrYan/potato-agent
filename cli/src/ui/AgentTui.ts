@@ -309,6 +309,17 @@ export const AgentTui = defineComponent<AgentTuiProps>(
       return lines.value.slice(start, end);
     }
 
+    function renderVisibleEvents() {
+      const visible = visibleLines();
+      const scrollbar = buildScrollbar(lines.value.length, scrollOffset.value, visibleEventLines, visible.length);
+      return visible.map((line, index) =>
+        h(Box, { justifyContent: "space-between" }, () => [
+          h(Text, eventTextStyle(line), () => line),
+          h(Text, { color: scrollbar[index] === "█" ? "cyan" : "gray", dimColor: scrollbar[index] !== "█" }, () => scrollbar[index] ?? " ")
+        ])
+      );
+    }
+
     return () =>
       h(Box, { flexDirection: "column", paddingX: 1 }, () => [
         h(Box, { justifyContent: "space-between" }, () => [
@@ -320,8 +331,8 @@ export const AgentTui = defineComponent<AgentTuiProps>(
           h(Text, null, () => config.value.workspacePath ?? process.cwd())
         ]),
         h(Box, { marginTop: 1, paddingX: 1, flexDirection: "column", minHeight: 10 }, () => [
-          h(Text, { dimColor: true }, () => `EVENTS${scrollOffset.value > 0 ? ` · 已上滚 ${scrollOffset.value} 行` : ""}`),
-          ...visibleLines().map((line) => h(Text, null, () => line)),
+          h(Text, { dimColor: true }, () => `EVENTS${lines.value.length > visibleEventLines ? ` · ${Math.max(lines.value.length - visibleEventLines - scrollOffset.value + 1, 1)}-${Math.max(lines.value.length - scrollOffset.value, 1)}/${lines.value.length}` : ""}`),
+          ...renderVisibleEvents(),
           ...renderCommandMenu(mode.value, selectedCommand.value),
           ...renderModelPicker(mode.value, selectedProvider.value, selectedModel.value, pendingApiKey.value)
         ]),
@@ -345,6 +356,47 @@ const commandOptions = [
 ];
 
 const visibleEventLines = 14;
+
+function buildScrollbar(totalLines: number, offsetFromBottom: number, viewportSize: number, renderedLines: number): string[] {
+  if (totalLines <= viewportSize || renderedLines === 0) {
+    return Array.from({ length: renderedLines }, () => " ");
+  }
+
+  const maxOffset = Math.max(totalLines - viewportSize, 0);
+  const scrollTop = maxOffset - offsetFromBottom;
+  const thumbSize = Math.max(1, Math.round((viewportSize / totalLines) * renderedLines));
+  const maxThumbTop = Math.max(renderedLines - thumbSize, 0);
+  const thumbTop = maxOffset === 0 ? 0 : Math.round((scrollTop / maxOffset) * maxThumbTop);
+
+  return Array.from({ length: renderedLines }, (_, index) =>
+    index >= thumbTop && index < thumbTop + thumbSize ? "█" : "│"
+  );
+}
+
+function eventTextStyle(line: string): { color?: string; dimColor?: boolean; bold?: boolean } {
+  if (line.startsWith("你：")) {
+    return { color: "cyan", bold: true };
+  }
+  if (line.startsWith("步骤：")) {
+    return { color: "blue" };
+  }
+  if (line.startsWith("推理：")) {
+    return { color: "gray", dimColor: true };
+  }
+  if (line.startsWith("工具开始：")) {
+    return { color: "yellow" };
+  }
+  if (line.startsWith("工具完成：") || line.startsWith("验证通过：") || line.startsWith("模型已配置：")) {
+    return { color: "green" };
+  }
+  if (line.startsWith("工具失败：") || line.startsWith("验证失败：") || line.startsWith("任务失败：") || line.startsWith("Agent 会话失败：")) {
+    return { color: "red" };
+  }
+  if (line.startsWith("COMMANDS") || line.startsWith("准备就绪")) {
+    return { color: "gray", dimColor: true };
+  }
+  return {};
+}
 
 function renderCommandMenu(mode: string, selectedCommand: number) {
   if (mode !== "command") {
