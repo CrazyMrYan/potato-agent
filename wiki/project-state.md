@@ -98,6 +98,8 @@ docs: record validation result
   - `bash` 展示执行命令。
   - `ls`、`grep`、`find`、`edit`、`write` 展示对应摘要。
 - `tool_execution_end` 会尽量提取工具输出摘要。
+- `EventStreamRenderer` 会合并连续的正文和 thinking delta，避免逐 token 逐行输出。
+- 工具结果会压缩成单行摘要，避免长文件内容和命令输出打散终端结构。
 - `agent chat` 使用同一个 Pi RPC 子进程持续多轮对话，不再每次输入都重新初始化会话。
 - `chat` 支持 `/exit` 或 `/quit` 退出。
 
@@ -115,7 +117,7 @@ pnpm dev chat \
 说明：
 
 - thinking 内容是否存在取决于 Pi RPC 是否收到模型/供应商返回的 thinking content。
-- 当前 CLI 只做朴素终端交互，不做复杂 TUI。
+- 当前 CLI 只做结构化终端输出，不做复杂 TUI。
 - 这一步解决的是“同一会话多轮输入”和“事件里不要丢工具关键参数”，不是完整桌面端 UI。
 
 ## 执行验证记录
