@@ -9,6 +9,7 @@
 - 当前仓库 `coding-agent` 是知识库和总控仓库。
 - 第一阶段不在当前仓库直接写实现代码。
 - 第一阶段实现仓库拆为 `coding-agent-protocol` 和 `coding-agent-cli`。
+- `coding-agent-protocol` 只承载协议契约，不承载核心实现逻辑。
 - Pi 作为底层智能体执行引擎。
 - 本项目自己的产品能力沉在 `AgentOrchestrator`。
 - CLI 是第一阶段验证壳。
@@ -17,6 +18,7 @@
 - CLI 已支持一次性 `run` 和持久 RPC 会话的 `chat`。
 - 协议已补充 `assistant.delta`，用于承载 Pi 输出的正文片段和 thinking 片段。
 - Pi 工具事件会提取 `args` 中的关键参数，例如 `read` 的文件路径和 `bash` 的命令。
+- 当前 `AgentOrchestrator`、`PiEventMapper`、`PiRpcAdapter` 暂放在 CLI 仓库是阶段折中，下一阶段应拆到 `coding-agent-core` 或 `coding-agent-runtime`。
 - 独立 `coding-agent-runtime` 仓库仍作为后续演进方向。
 
 ## 阶段文档

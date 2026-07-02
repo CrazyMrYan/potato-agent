@@ -110,6 +110,9 @@ coding-agent-cli
 它不负责：
 
 - 调用 Pi
+- 转换 Pi 内部事件语义
+- 编排任务生命周期
+- 实现权限、trace、验证策略
 - 读写文件
 - 执行命令
 - 展示 CLI
@@ -204,6 +207,8 @@ export type ApprovalRequest = {
 - 调用 AgentGateway。
 
 它不应该直接调用 Pi。所有 Pi 相关能力必须经过 `AgentOrchestrator -> PiAdapter`。
+
+当前 `AgentGateway`、`AgentOrchestrator` 和 `PiAdapter` 暂放在 `coding-agent-cli` 仓库，是第一阶段验证折中。长期方案中，这些模块应迁出 CLI，进入 `coding-agent-core` 或 `coding-agent-runtime`。`coding-agent-protocol` 仍只保存类型契约，不保存这些实现。
 
 ### 目录结构
 

@@ -25,6 +25,20 @@ CLI 不直接依赖 Pi 的内部事件和对象结构，而是依赖我们自己
 
 后续如果需要把 Pi runtime 拆成独立仓库，只需要增加本项目自己的 runtime gateway。CLI、`AgentGateway` 和大部分编排逻辑不需要重写。
 
+## 仓库边界
+
+`coding-agent-protocol` 不是核心实现层，它只定义稳定契约。核心能力不应该放进 protocol，否则 CLI、桌面端和 runtime 会被迫依赖一个带实现的“协议包”，边界会变混乱。
+
+长期边界应拆成三类：
+
+| 仓库 | 职责 | 不放什么 |
+| --- | --- | --- |
+| `coding-agent-protocol` | 任务输入、事件、审批、diff、错误码等类型契约 | Pi 调用、事件映射实现、终端渲染、工具执行 |
+| `coding-agent-core` 或 `coding-agent-runtime` | `AgentGateway`、`AgentOrchestrator`、`PiAdapter`、事件映射、权限、trace、验证、工具边界 | CLI 参数解析、终端 UI |
+| `coding-agent-cli` | 命令解析、交互输入、终端渲染、调用 core/runtime | 智能体编排策略、Pi 事件语义转换 |
+
+当前 `AgentOrchestrator`、`PiEventMapper` 和 `PiRpcAdapter` 暂放在 `coding-agent-cli`，是第一阶段为了尽快验证真实 Pi 路径的折中。它们不属于 CLI 的长期职责，也不应该迁入 protocol。下一阶段应优先拆到 `coding-agent-core` 或 `coding-agent-runtime`。
+
 ## 能力放置原则
 
 Pi 是底层执行引擎，不是产品能力的唯一承载点。后续要在 Pi 上面叠加能力时，优先放在 `AgentOrchestrator`。
