@@ -1,3 +1,6 @@
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { createTuiConfig, runTuiCommand } from "../src/commands/tui.js";
 
@@ -27,7 +30,7 @@ describe("createTuiConfig", () => {
 describe("runTuiCommand", () => {
   it("passes normalized config to renderer", async () => {
     const render = vi.fn();
-    await runTuiCommand({ cwd: "/repo", provider: "deepseek", model: "deepseek-chat" }, { render });
+    await runTuiCommand({ cwd: "/repo", provider: "deepseek", model: "deepseek-chat" }, { render, loadConfig: async () => ({}) });
 
     expect(render).toHaveBeenCalledWith(expect.objectContaining({ workspacePath: "/repo", provider: "deepseek" }));
   });
@@ -53,5 +56,29 @@ describe("runTuiCommand", () => {
       apiKey: "stored-key",
       timeoutMs: undefined
     });
+  });
+
+  it("loads configuration through the default config initializer seam", async () => {
+    const render = vi.fn();
+    const loadConfig = vi.fn(async () => ({}));
+
+    await runTuiCommand({ cwd: "/repo" }, { render, loadConfig });
+
+    expect(loadConfig).toHaveBeenCalledWith("/repo");
+    expect(render).toHaveBeenCalledWith({ workspacePath: "/repo" });
+  });
+
+  it("creates a default workspace config file on startup", async () => {
+    const workspace = await mkdtemp(join(tmpdir(), "agent-tui-config-"));
+    const render = vi.fn();
+
+    try {
+      await runTuiCommand({ cwd: workspace }, { render });
+
+      const raw = await readFile(join(workspace, ".coding-agent", "config.json"), "utf8");
+      expect(JSON.parse(raw)).toEqual({});
+    } finally {
+      await rm(workspace, { recursive: true, force: true });
+    }
   });
 });

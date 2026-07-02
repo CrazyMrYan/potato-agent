@@ -1,6 +1,6 @@
-import React from "react";
-import { render as inkRender } from "ink";
-import { AgentSessionFactory, FileAgentConfigStore, mergeAgentConfig, type AgentConfig } from "@coding-agent/core";
+import { h } from "vue";
+import { createApp } from "@vue-tui/runtime";
+import { AgentSessionFactory, ensureDefaultAgentConfig, FileAgentConfigStore, mergeAgentConfig, type AgentConfig } from "@coding-agent/core";
 import { AgentTui } from "../ui/AgentTui.js";
 
 export type TuiCommandOptions = AgentConfig & {
@@ -31,7 +31,7 @@ export async function runTuiCommand(
   const loadConfig =
     dependencies.loadConfig ??
     ((workspacePath: string) => {
-      return new FileAgentConfigStore(workspacePath).load();
+      return ensureDefaultAgentConfig(new FileAgentConfigStore(workspacePath));
     });
   const storedConfig = await loadConfig(runtimeConfig.workspacePath ?? process.cwd());
   const config = mergeAgentConfig(storedConfig, runtimeConfig);
@@ -47,11 +47,12 @@ export async function runTuiCommand(
     ((workspacePath: string, nextConfig: AgentConfig) => {
       return new FileAgentConfigStore(workspacePath).save(nextConfig);
     });
-  inkRender(
-    <AgentTui
-      config={config}
-      createSession={(sessionConfig) => sessionFactory.create(sessionConfig)}
-      saveConfig={(nextConfig) => saveConfig(nextConfig.workspacePath ?? process.cwd(), nextConfig)}
-    />
-  );
+  createApp({
+    render: () =>
+      h(AgentTui, {
+        config,
+        createSession: (sessionConfig: AgentConfig) => sessionFactory.create(sessionConfig),
+        saveConfig: (nextConfig: AgentConfig) => saveConfig(nextConfig.workspacePath ?? process.cwd(), nextConfig)
+      })
+  }).mount();
 }

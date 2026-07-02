@@ -18,7 +18,7 @@
 - CLI 已支持一次性 `run` 和持久 RPC 会话的 `chat`。
 - 协议已补充 `assistant.delta`，用于承载 Pi 输出的正文片段和 thinking 片段。
 - Pi 工具事件会提取 `args` 中的关键参数，例如 `read` 的文件路径和 `bash` 的命令。
-- M4 已把 CLI 主入口改成 Ink TUI，并把运行时模型配置、会话创建能力继续收敛到 `core/`。
+- M4 已把 CLI 主入口改成 Vue TUI，并把运行时模型配置、会话创建能力继续收敛到 `core/`。
 - 独立 `coding-agent-runtime` 仓库仍作为后续演进方向。
 
 ## 阶段文档
@@ -141,7 +141,7 @@ pnpm --filter @coding-agent/cli dev chat \
 
 技术选择：
 
-- 使用 Ink 作为 CLI TUI 层。
+- 使用 `@vue-tui/runtime` 作为 CLI TUI 层。
 - 保留 commander 作为命令入口和兼容命令解析。
 - 保留现有 `EventStreamRenderer` 作为事件文本格式化基础，TUI 负责布局。
 
@@ -161,11 +161,11 @@ pnpm --filter @coding-agent/cli dev chat \
 - 新增 `core/src/config/AgentConfig.ts` 和 `core/src/config/AgentConfigStore.ts`。
 - 新增 `core/src/session/AgentSession.ts` 和 `core/src/session/AgentSessionFactory.ts`。
 - `chat` 兼容命令改为通过 `AgentSessionFactory` 创建会话，不再直接 new Pi session adapter。
-- CLI 引入 Ink TUI，默认 `agent` 入口进入交互式界面。
+- CLI 引入 Vue TUI，默认 `agent` 入口进入交互式界面。
 - TUI 默认 workspace 使用启动目录。
-- TUI 支持 `/model <provider> <model> [apiKey]` 运行时配置模型。
-- TUI 启动时读取 `<workspace>/.coding-agent/config.json`，`/model` 会写回该配置文件。
-- TUI 支持 `/workspace`、`/model`、`/exit`。
+- TUI 启动时确保生成 `<workspace>/.coding-agent/config.json`。
+- TUI 支持 `Ctrl+M` 打开模型配置选择器，用方向键选择 provider 和 model，并可输入 API Key。
+- TUI 支持 `Ctrl+W` 查看工作区、`Ctrl+C` 退出；兼容 `/workspace`、`/model`、`/exit`。
 
 验证结果：
 

@@ -15,14 +15,13 @@
     "@coding-agent/core": "workspace:*",
     "@coding-agent/protocol": "workspace:*",
     "@inquirer/prompts": "^8.5.2",
+    "@vue-tui/runtime": "^0.1.1",
     "commander": "^15.0.0",
-    "ink": "^7.1.0",
     "picocolors": "^1.1.1",
-    "react": "^19.2.7"
+    "vue": "^3.5.39"
   },
   "devDependencies": {
     "@types/node": "^26.1.0",
-    "@types/react": "^19.2.17",
     "tsx": "^4.22.4",
     "typescript": "^6.0.3",
     "vitest": "^4.1.9"

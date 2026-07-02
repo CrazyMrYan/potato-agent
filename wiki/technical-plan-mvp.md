@@ -82,7 +82,7 @@ coding-agent/
 | 运行时 | Node.js | 便于接入文件系统、Git、Shell、Pi SDK；Pi 包声明需要 `>=22.19.0` |
 | 包管理 | pnpm workspace | 单仓库多包管理，保证 `protocol`、`core`、`cli` 边界清晰 |
 | CLI 框架 | commander | 命令解析简单稳定 |
-| 终端输出 | Ink + picocolors + 自定义 renderer | M4 引入轻量 TUI，renderer 继续负责事件文本格式化 |
+| 终端输出 | @vue-tui/runtime + picocolors + 自定义 renderer | M4 引入 Vue TUI，renderer 继续负责事件文本格式化 |
 | 交互确认 | @inquirer/prompts | 用于写文件、执行命令、删除文件等确认 |
 | diff 生成 | git diff 优先 | 以 Git 作为变更边界，避免自己实现 diff |
 | 搜索 | ripgrep 调用 | 直接复用开发者环境中成熟工具 |
@@ -432,14 +432,14 @@ agent
 行为：
 
 1. 默认 workspace 使用当前目录。
-2. 进入 Ink TUI。
+2. 进入 Vue TUI。
 3. 如果 provider、model 或 API Key 缺失，在 TUI 内提示运行时配置。
-4. TUI 启动时读取 `<workspace>/.coding-agent/config.json`，用户通过 `/model <provider> <model> [apiKey]` 修改后写回该配置。
-5. 用户输入任务后，TUI 通过 `@coding-agent/core` 创建同一个 Pi RPC 会话。
-6. 每轮实时展示 step、assistant delta、工具调用和最终模型输出。
-7. 输入 `/model` 可以查看当前会话模型。
-8. 输入 `/workspace` 显示当前工作区。
-9. 输入 `/exit` 或 `/quit` 退出。
+4. TUI 启动时确保生成 `<workspace>/.coding-agent/config.json`。
+5. 用户通过 `Ctrl+M` 打开模型配置选择器，用方向键选择 provider 和 model，并可输入 API Key；配置保存后写回 workspace 配置文件。
+6. 用户输入任务后，TUI 通过 `@coding-agent/core` 创建同一个 Pi RPC 会话。
+7. 每轮实时展示 step、assistant delta、工具调用和最终模型输出。
+8. `Ctrl+W` 显示当前工作区。
+9. `Ctrl+C` 退出。
 
 ### agent run
 
@@ -633,7 +633,7 @@ FakePiAdapter
 
 产物：
 
-- Ink TUI 默认入口。
+- Vue TUI 默认入口。
 - 运行时模型配置。
 - `AgentConfig` 和 core 配置读取/解析。
 - `AgentSessionFactory`，让 CLI 不直接创建 Pi session adapter。
@@ -642,7 +642,7 @@ FakePiAdapter
 验收：
 
 - `agent` 不传参数即可进入 TUI。
-- TUI 可以在运行时输入 provider、model 和 API Key。
+- TUI 可以在运行时选择 provider、model 并输入 API Key。
 - TUI 可以发送多轮任务到同一个 core session。
 - `agent run` 和 `agent chat` 兼容命令继续可用。
 - `pnpm test`、`pnpm typecheck`、`pnpm build` 通过。
@@ -734,7 +734,7 @@ FakePiAdapter
 推荐执行顺序：
 
 1. 在 `core/` 增加运行时配置和 session facade。
-2. 在 `cli/` 引入 Ink TUI 默认入口。
+2. 在 `cli/` 引入 Vue TUI 默认入口。
 3. 保留 `agent run` 和 `agent chat` 兼容命令。
 4. 在后续 M5 增加 trace/diff。
 5. 在后续 M6 增加权限和工具边界。

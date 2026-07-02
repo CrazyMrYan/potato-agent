@@ -1,12 +1,14 @@
 # M4 TUI Core Config Implementation Plan
 
+> 修订说明：M4 初版计划曾以 Ink/React 为 TUI 技术栈，后续实现已按项目要求切换到 `@vue-tui/runtime` + Vue。本文保留历史步骤用于追溯，当前事实以 `wiki/project-state.md`、`wiki/technical-plan-mvp.md` 和源码为准。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Make `agent` open a lightweight interactive TUI by default, allow runtime model configuration, and move session/config creation out of CLI into `@coding-agent/core`.
 
-**Architecture:** `core/` owns model config normalization, API key resolution, persisted workspace config, and session creation. `cli/` owns commander wiring and Ink UI rendering only. The existing `run` and `chat` commands remain as compatibility paths.
+**Architecture:** `core/` owns model config normalization, API key resolution, persisted workspace config, and session creation. `cli/` owns commander wiring and Vue TUI rendering only. The existing `run` and `chat` commands remain as compatibility paths.
 
-**Tech Stack:** TypeScript, Node.js, pnpm workspace, Vitest, commander, Ink, React, @inquirer/prompts, @earendil-works/pi-coding-agent.
+**Tech Stack:** TypeScript, Node.js, pnpm workspace, Vitest, commander, @vue-tui/runtime, Vue, @inquirer/prompts, @earendil-works/pi-coding-agent.
 
 ---
 
@@ -23,7 +25,7 @@ Create and modify these files:
 - Create `core/tests/agent-session-factory.test.ts`: session factory tests.
 - Modify `cli/package.json`: add `ink`, `react`, and `@types/react`.
 - Create `cli/src/commands/tui.tsx`: render the default TUI.
-- Create `cli/src/ui/AgentTui.tsx`: Ink UI component.
+- Create `cli/src/ui/AgentTui.ts`: Vue TUI component.
 - Modify `cli/src/commands/chat.ts`: create sessions via core session factory.
 - Modify `cli/src/commands/run.ts`: keep run compatibility, use core config shape where useful.
 - Modify `cli/src/cli.ts`: default action opens TUI; keep `run` and `chat`.
@@ -452,7 +454,9 @@ pnpm --filter @coding-agent/cli test -- chat-command
 
 Expected: tests pass.
 
-## Task 4: Ink TUI Default Entry
+## Task 4: Vue TUI Default Entry
+
+> 历史注意：本任务下面的原始步骤仍保留了 Ink/React 示例代码，不再代表当前实现。当前实现使用 `cli/src/ui/AgentTui.ts` 中的 `@vue-tui/runtime` + Vue `defineComponent`，并由 `cli/src/commands/tui.tsx` 通过 `createApp(...).mount()` 启动。
 
 **Files:**
 - Modify: `cli/package.json`

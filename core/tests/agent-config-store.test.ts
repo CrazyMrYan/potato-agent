@@ -2,7 +2,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { FileAgentConfigStore, mergeAgentConfig } from "../src/config/AgentConfigStore.js";
+import { ensureDefaultAgentConfig, FileAgentConfigStore, mergeAgentConfig } from "../src/config/AgentConfigStore.js";
 
 describe("FileAgentConfigStore", () => {
   it("returns an empty config when no config file exists", async () => {
@@ -52,5 +52,20 @@ describe("mergeAgentConfig", () => {
       apiKey: "runtime",
       workspacePath: "/repo"
     });
+  });
+});
+
+describe("ensureDefaultAgentConfig", () => {
+  it("creates a default config file when missing", async () => {
+    const workspace = await mkdtemp(join(tmpdir(), "agent-config-default-"));
+    try {
+      const config = await ensureDefaultAgentConfig(new FileAgentConfigStore(workspace));
+
+      expect(config).toEqual({});
+      const raw = await readFile(join(workspace, ".coding-agent", "config.json"), "utf8");
+      expect(JSON.parse(raw)).toEqual({});
+    } finally {
+      await rm(workspace, { recursive: true, force: true });
+    }
   });
 });

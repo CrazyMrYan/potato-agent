@@ -34,6 +34,12 @@ export class FileAgentConfigStore implements AgentConfigStore {
   }
 }
 
+export async function ensureDefaultAgentConfig(store: AgentConfigStore): Promise<AgentConfig> {
+  const config = await store.load();
+  await store.save(config);
+  return config;
+}
+
 function isNotFound(error: unknown): boolean {
   return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT";
 }

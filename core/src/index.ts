@@ -1,6 +1,6 @@
 export type { AgentConfig, ResolvedAgentConfig } from "./config/AgentConfig.js";
 export { mergeAgentConfig } from "./config/AgentConfig.js";
-export { FileAgentConfigStore, type AgentConfigStore } from "./config/AgentConfigStore.js";
+export { ensureDefaultAgentConfig, FileAgentConfigStore, type AgentConfigStore } from "./config/AgentConfigStore.js";
 export type { AgentGateway } from "./gateway/AgentGateway.js";
 export { LocalAgentGateway } from "./gateway/LocalAgentGateway.js";
 export { AgentOrchestrator } from "./orchestrator/AgentOrchestrator.js";
