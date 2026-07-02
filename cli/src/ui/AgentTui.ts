@@ -1,4 +1,4 @@
-import { defineComponent, h, onBeforeUnmount, ref } from "vue";
+import { defineComponent, h, markRaw, onBeforeUnmount, ref, shallowRef } from "vue";
 import { Box, Text, useApp, useInput } from "@vue-tui/runtime";
 import type { AgentConfig, AgentSession } from "@coding-agent/core";
 import { EventStreamRenderer } from "./EventStreamRenderer.js";
@@ -22,9 +22,10 @@ export const AgentTui = defineComponent<AgentTuiProps>(
   (props) => {
     const app = useApp();
     const config = ref<AgentConfig>({ ...props.config });
-    const session = ref<AgentSession>();
+    const session = shallowRef<AgentSession>();
     const busy = ref(false);
     const draft = ref("");
+    const scrollOffset = ref(0);
     const mode = ref<"chat" | "command" | "model-provider" | "model-model" | "model-key">("chat");
     const selectedCommand = ref(0);
     const selectedProvider = ref(0);
@@ -47,6 +48,26 @@ export const AgentTui = defineComponent<AgentTuiProps>(
 
       if (key.ctrl && input === "w") {
         appendLine(`workspace: ${config.value.workspacePath ?? process.cwd()}`);
+        return;
+      }
+
+      if (mode.value === "chat" && key.pageUp) {
+        scrollOffset.value = Math.min(scrollOffset.value + 8, Math.max(lines.value.length - visibleEventLines, 0));
+        return;
+      }
+
+      if (mode.value === "chat" && key.pageDown) {
+        scrollOffset.value = Math.max(scrollOffset.value - 8, 0);
+        return;
+      }
+
+      if (mode.value === "chat" && key.upArrow && draft.value.length === 0) {
+        scrollOffset.value = Math.min(scrollOffset.value + 1, Math.max(lines.value.length - visibleEventLines, 0));
+        return;
+      }
+
+      if (mode.value === "chat" && key.downArrow && draft.value.length === 0) {
+        scrollOffset.value = Math.max(scrollOffset.value - 1, 0);
         return;
       }
 
@@ -241,7 +262,8 @@ export const AgentTui = defineComponent<AgentTuiProps>(
       appendLine(`你：${prompt}`);
 
       try {
-        const activeSession = session.value ?? props.createSession?.(config.value);
+        const createdSession = props.createSession?.(config.value);
+        const activeSession = session.value ?? (createdSession ? markRaw(createdSession) : undefined);
         if (!activeSession) {
           appendLine("Agent 会话创建失败：缺少 core session factory。");
           return;
@@ -273,10 +295,18 @@ export const AgentTui = defineComponent<AgentTuiProps>(
 
     function appendLine(line: string): void {
       lines.value = [...lines.value, line];
+      scrollOffset.value = 0;
     }
 
     function appendLines(nextLines: string[]): void {
       lines.value = [...lines.value, ...nextLines.filter((line) => line.length > 0)];
+      scrollOffset.value = 0;
+    }
+
+    function visibleLines(): string[] {
+      const end = Math.max(lines.value.length - scrollOffset.value, 0);
+      const start = Math.max(end - visibleEventLines, 0);
+      return lines.value.slice(start, end);
     }
 
     return () =>
@@ -285,21 +315,21 @@ export const AgentTui = defineComponent<AgentTuiProps>(
           h(Text, { bold: true, color: "cyan" }, () => "Coding Agent"),
           h(Text, { dimColor: true }, () => `${busy.value ? "运行中" : "空闲"} · ${formatModel(config.value)}`)
         ]),
-        h(Box, { marginTop: 1, borderStyle: "round", borderColor: "gray", paddingX: 1, flexDirection: "column" }, () => [
+        h(Box, { marginTop: 1, paddingX: 1, flexDirection: "column" }, () => [
           h(Text, { dimColor: true }, () => "WORKSPACE"),
           h(Text, null, () => config.value.workspacePath ?? process.cwd())
         ]),
-        h(Box, { marginTop: 1, borderStyle: "round", borderColor: "cyan", paddingX: 1, flexDirection: "column", minHeight: 10 }, () => [
-          h(Text, { dimColor: true }, () => "EVENTS"),
-          ...lines.value.slice(-14).map((line) => h(Text, null, () => line)),
+        h(Box, { marginTop: 1, paddingX: 1, flexDirection: "column", minHeight: 10 }, () => [
+          h(Text, { dimColor: true }, () => `EVENTS${scrollOffset.value > 0 ? ` · 已上滚 ${scrollOffset.value} 行` : ""}`),
+          ...visibleLines().map((line) => h(Text, null, () => line)),
           ...renderCommandMenu(mode.value, selectedCommand.value),
           ...renderModelPicker(mode.value, selectedProvider.value, selectedModel.value, pendingApiKey.value)
         ]),
-        h(Box, { marginTop: 1, borderStyle: "round", borderColor: mode.value === "chat" ? "green" : "yellow", paddingX: 1 }, () => [
+        h(Box, { marginTop: 1, paddingX: 1 }, () => [
           h(Text, null, () => `${inputLabel(mode.value)} ${mode.value === "chat" || mode.value === "command" ? draft.value : modelPrompt(mode.value)}`)
         ]),
         h(Box, { marginTop: 1 }, () => [
-          h(Text, { dimColor: true }, () => "Ctrl+M 模型 · Ctrl+W 工作区 · 输入 / 打开命令 · Ctrl+C 退出")
+          h(Text, { dimColor: true }, () => "Ctrl+M 模型 · 输入 / 打开命令 · PageUp/PageDown 滚动 · Ctrl+C 退出")
         ])
       ]);
   },
@@ -313,6 +343,8 @@ const commandOptions = [
   { command: "/workspace", label: "/workspace", description: "显示当前工作区" },
   { command: "/exit", label: "/exit", description: "退出 TUI" }
 ];
+
+const visibleEventLines = 14;
 
 function renderCommandMenu(mode: string, selectedCommand: number) {
   if (mode !== "command") {

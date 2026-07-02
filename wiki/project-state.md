@@ -167,6 +167,9 @@ pnpm --filter @coding-agent/cli dev chat \
 - TUI 支持 `Ctrl+M` 打开模型配置选择器，用方向键选择 provider 和 model，并可输入 API Key。
 - TUI 支持输入 `/` 弹出命令候选菜单，可选择 `/model`、`/workspace`、`/exit`。
 - TUI 支持 `Ctrl+W` 查看工作区、`Ctrl+C` 退出。
+- TUI 事件区支持 `PageUp/PageDown` 或空输入时 `↑/↓` 滚动。
+- TUI 事件区和输入区不使用边框，减少复制内容时带出框线。
+- TUI 使用 `shallowRef` 和 `markRaw` 保存 `AgentSession`，避免 Vue 代理 Pi RPC client 导致第二轮对话出现 `Illegal invocation`。
 - Commander 只保留为默认入口、`run` 和 `chat` 兼容命令的薄路由层，模型配置不再放在默认启动参数里。
 
 验证结果：
