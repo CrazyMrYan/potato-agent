@@ -1,0 +1,59 @@
+#!/usr/bin/env node
+import { Command } from "commander";
+import { chatCommand } from "./commands/chat.js";
+import { RenderedTaskFailedError, runCommand } from "./commands/run.js";
+import { formatCliError } from "./cliError.js";
+
+const program = new Command();
+
+program.name("agent").description("编码智能体 CLI").version("0.1.0");
+
+program
+  .command("run")
+  .argument("<prompt>", "任务描述")
+  .option("--provider <provider>", "模型供应商，例如 openai、anthropic")
+  .option("--model <model>", "模型名称，例如 gpt-5.5、claude-opus-4-5")
+  .option("--api-key <apiKey>", "模型 API Key，也可使用对应环境变量")
+  .option("--workspace <path>", "要验证的项目目录", process.cwd())
+  .option("--timeout-ms <ms>", "Pi RPC 等待超时时间", "120000")
+  .action(async (prompt: string, options: Record<string, string>) => {
+    try {
+      await runCommand(prompt, {
+        provider: options.provider,
+        model: options.model,
+        apiKey: options.apiKey,
+        workspacePath: options.workspace,
+        timeoutMs: Number(options.timeoutMs)
+      });
+    } catch (error) {
+      if (!(error instanceof RenderedTaskFailedError)) {
+        console.error(formatCliError(error));
+      }
+      process.exitCode = 1;
+    }
+  });
+
+program
+  .command("chat")
+  .description("进入多轮交互会话")
+  .option("--provider <provider>", "模型供应商，例如 deepseek")
+  .option("--model <model>", "模型名称，例如 deepseek-reasoner")
+  .option("--api-key <apiKey>", "模型 API Key，也可使用对应环境变量")
+  .option("--workspace <path>", "要验证的项目目录", process.cwd())
+  .option("--timeout-ms <ms>", "Pi RPC 每轮等待超时时间", "120000")
+  .action(async (options: Record<string, string>) => {
+    try {
+      await chatCommand({
+        provider: options.provider,
+        model: options.model,
+        apiKey: options.apiKey,
+        workspacePath: options.workspace,
+        timeoutMs: Number(options.timeoutMs)
+      });
+    } catch (error) {
+      console.error(formatCliError(error));
+      process.exitCode = 1;
+    }
+  });
+
+await program.parseAsync(process.argv);

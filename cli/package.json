@@ -1,0 +1,27 @@
+{
+  "name": "@coding-agent/cli",
+  "version": "0.1.0",
+  "type": "module",
+  "bin": {
+    "agent": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx src/cli.ts",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@coding-agent/core": "workspace:*",
+    "@coding-agent/protocol": "workspace:*",
+    "@inquirer/prompts": "^8.5.2",
+    "commander": "^15.0.0",
+    "picocolors": "^1.1.1"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.0",
+    "tsx": "^4.22.4",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.9"
+  }
+}

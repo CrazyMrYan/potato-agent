@@ -1,0 +1,167 @@
+import { describe, expect, it } from "vitest";
+import type { AgentEvent, RunTaskInput } from "@coding-agent/protocol";
+import { PiRpcAdapter, type PiRpcClientLike } from "../src/pi/PiRpcAdapter.js";
+
+class FakeRpcClient implements PiRpcClientLike {
+  private listeners: Array<(event: unknown) => void> = [];
+  private resolveIdle?: () => void;
+  started = false;
+  promptStarted = false;
+
+  async start(): Promise<void> {
+    this.started = true;
+  }
+
+  onEvent(listener: (event: unknown) => void): () => void {
+    this.listeners.push(listener);
+    return () => {
+      this.listeners = this.listeners.filter((current) => current !== listener);
+    };
+  }
+
+  async prompt(): Promise<void> {
+    this.promptStarted = true;
+    queueMicrotask(() => {
+      this.emit({ type: "agent_start" });
+    });
+  }
+
+  waitForIdle(): Promise<void> {
+    return new Promise((resolve) => {
+      this.resolveIdle = resolve;
+    });
+  }
+
+  async getLastAssistantText(): Promise<string | null> {
+    return "完成";
+  }
+
+  getStderr(): string {
+    return "";
+  }
+
+  async stop(): Promise<void> {}
+
+  finish(): void {
+    this.resolveIdle?.();
+  }
+
+  emit(event: unknown): void {
+    for (const listener of this.listeners) {
+      listener(event);
+    }
+  }
+
+  hasListeners(): boolean {
+    return this.listeners.length > 0;
+  }
+}
+
+describe("PiRpcAdapter streaming", () => {
+  it("yields mapped Pi events before the RPC client becomes idle", async () => {
+    const client = new FakeRpcClient();
+    const adapter = new PiRpcAdapter(
+      {
+        provider: "deepseek",
+        model: "deepseek-chat",
+        workspacePath: "/repo",
+        apiKeyEnvName: "DEEPSEEK_API_KEY",
+        apiKey: "test-key",
+        timeoutMs: 1000
+      },
+      { createClient: () => client }
+    );
+    const input: RunTaskInput = {
+      taskId: "task_1",
+      workspacePath: "/repo",
+      prompt: "解释项目",
+      mode: "run",
+      approvalMode: "manual"
+    };
+
+    const iterator = adapter.run(input)[Symbol.asyncIterator]();
+    expect((await iterator.next()).value).toMatchObject({ type: "step.started", title: "启动 Pi RPC：deepseek/deepseek-chat" });
+
+    const streamed = iterator.next();
+    await waitUntil(() => client.hasListeners() && client.promptStarted);
+    await Promise.resolve();
+
+    expect((await streamed).value).toMatchObject<Partial<AgentEvent>>({ type: "step.started", title: "Pi 已开始处理任务" });
+
+    client.finish();
+    expect((await iterator.next()).value).toMatchObject({ type: "task.finished", summary: "完成" });
+  });
+
+  it("maps Pi tool arguments and assistant deltas into visible events", async () => {
+    const client = new FakeRpcClient();
+    const adapter = new PiRpcAdapter(
+      {
+        provider: "deepseek",
+        model: "deepseek-reasoner",
+        workspacePath: "/repo",
+        apiKeyEnvName: "DEEPSEEK_API_KEY",
+        apiKey: "test-key",
+        timeoutMs: 1000
+      },
+      { createClient: () => client }
+    );
+    const input: RunTaskInput = {
+      taskId: "task_1",
+      workspacePath: "/repo",
+      prompt: "解释项目",
+      mode: "run",
+      approvalMode: "manual"
+    };
+
+    const events: AgentEvent[] = [];
+    const consume = (async () => {
+      for await (const event of adapter.run(input)) {
+        events.push(event);
+      }
+    })();
+
+    await waitUntil(() => client.hasListeners() && client.promptStarted);
+    client.emit({
+      type: "message_update",
+      message: {
+        role: "assistant",
+        content: [
+          { type: "thinking", thinking: "需要先查看文件" },
+          { type: "text", text: "我会只读检查。" },
+          { type: "toolCall", id: "call_1", name: "read", arguments: { path: "src/index.ts" } }
+        ]
+      }
+    });
+    client.emit({ type: "tool_execution_start", toolName: "read", toolCallId: "call_1", args: { path: "src/index.ts" } });
+    client.emit({ type: "tool_execution_start", toolName: "bash", toolCallId: "call_2", args: { command: "rg --files" } });
+    client.finish();
+    await consume;
+
+    expect(events).toContainEqual({
+      type: "assistant.delta",
+      taskId: "task_1",
+      channel: "thinking",
+      text: "需要先查看文件"
+    });
+    expect(events).toContainEqual({
+      type: "assistant.delta",
+      taskId: "task_1",
+      channel: "text",
+      text: "我会只读检查。"
+    });
+    expect(events).toContainEqual(expect.objectContaining({ type: "tool.started", tool: "read", summary: "读取文件：src/index.ts" }));
+    expect(events).toContainEqual(expect.objectContaining({ type: "tool.started", tool: "bash", summary: "执行命令：rg --files" }));
+  });
+});
+
+async function waitUntil(predicate: () => boolean): Promise<void> {
+  for (let attempt = 0; attempt < 20; attempt++) {
+    if (predicate()) {
+      return;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+
+  throw new Error("等待条件超时");
+}

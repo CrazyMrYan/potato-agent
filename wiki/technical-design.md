@@ -25,19 +25,20 @@ CLI 不直接依赖 Pi 的内部事件和对象结构，而是依赖我们自己
 
 后续如果需要把 Pi runtime 拆成独立仓库，只需要增加本项目自己的 runtime gateway。CLI、`AgentGateway` 和大部分编排逻辑不需要重写。
 
-## 仓库边界
+## 工作区边界
 
-`coding-agent-protocol` 不是核心实现层，它只定义稳定契约。核心能力不应该放进 protocol，否则 CLI、桌面端和 runtime 会被迫依赖一个带实现的“协议包”，边界会变混乱。
+`protocol/` 不是核心实现层，它只定义稳定契约。核心能力不应该放进 protocol，否则 CLI、桌面端和 runtime 会被迫依赖一个带实现的“协议包”，边界会变混乱。
 
-长期边界应拆成三类：
+当前工作区边界：
 
-| 仓库 | 职责 | 不放什么 |
-| --- | --- | --- |
-| `coding-agent-protocol` | 任务输入、事件、审批、diff、错误码等类型契约 | Pi 调用、事件映射实现、终端渲染、工具执行 |
-| `coding-agent-core` 或 `coding-agent-runtime` | `AgentGateway`、`AgentOrchestrator`、`PiAdapter`、事件映射、权限、trace、验证、工具边界 | CLI 参数解析、终端 UI |
-| `coding-agent-cli` | 命令解析、交互输入、终端渲染、调用 core/runtime | 智能体编排策略、Pi 事件语义转换 |
+| 目录 | 包名 | 职责 | 不放什么 |
+| --- | --- | --- | --- |
+| `protocol/` | `@coding-agent/protocol` | 任务输入、事件、审批、diff、错误码等类型契约 | Pi 调用、事件映射实现、终端渲染、工具执行 |
+| `core/` | `@coding-agent/core` | `AgentGateway`、`AgentOrchestrator`、`PiAdapter`、事件映射、权限、trace、验证、工具边界 | CLI 参数解析、终端 UI |
+| `cli/` | `@coding-agent/cli` | 命令解析、交互输入、终端渲染、调用 core | 智能体编排策略、Pi 事件语义转换 |
+| `wiki/` | 无 | 知识库和阶段记录 | 运行时代码 |
 
-当前 `AgentOrchestrator`、`PiEventMapper` 和 `PiRpcAdapter` 暂放在 `coding-agent-cli`，是第一阶段为了尽快验证真实 Pi 路径的折中。它们不属于 CLI 的长期职责，也不应该迁入 protocol。下一阶段应优先拆到 `coding-agent-core` 或 `coding-agent-runtime`。
+`AgentOrchestrator`、`PiEventMapper` 和 `PiRpcAdapter` 已从 CLI 拆入 `core/`。后续如果需要更强隔离，再从 `core/` 拆出独立 `coding-agent-runtime` 子进程。
 
 ## 能力放置原则
 
@@ -60,9 +61,9 @@ Pi 是底层执行引擎，不是产品能力的唯一承载点。后续要在 P
 flowchart TB
     User["开发者"] --> CLI["CLI Host<br/>任务输入 / 进度展示 / diff 展示 / 用户确认"]
     CLI --> Gateway["AgentGateway<br/>任务协议 / 事件转换 / 生命周期控制"]
-    Gateway --> Orchestrator["AgentOrchestrator<br/>任务生命周期 / 权限 / 上下文 / 验证 / diff / trace"]
-    Orchestrator --> RPC["PiRpcAdapter<br/>第一版：启动 Pi RPC 子进程"]
-    Orchestrator -. "后续可替换" .-> Runtime["RuntimePiAdapter<br/>本项目 runtime 子进程 / JSON 事件流"]
+    Gateway --> Core["Core Package<br/>AgentOrchestrator / 权限 / 上下文 / 验证 / diff / trace"]
+    Core --> RPC["PiRpcAdapter<br/>第一版：启动 Pi RPC 子进程"]
+    Core -. "后续可替换" .-> Runtime["RuntimePiAdapter<br/>本项目 runtime 子进程 / JSON 事件流"]
 
     RPC --> PiSDK["Pi SDK RpcClient / Pi Coding Agent"]
     Runtime --> PiProc["coding-agent-runtime 子进程"]
@@ -75,7 +76,7 @@ flowchart TB
     ToolBoundary --> ShellTools["Shell 工具<br/>命令 / 测试 / 构建"]
     ToolBoundary --> GitTools["Git 工具<br/>状态 / diff / 提交边界"]
 
-    Orchestrator --> TraceStore["Trace Store<br/>任务 / 事件 / 工具调用 / diff / 验证结果"]
+    Core --> TraceStore["Trace Store<br/>任务 / 事件 / 工具调用 / diff / 验证结果"]
 ```
 
 ## 模块职责
@@ -151,7 +152,7 @@ interface AgentGateway {
 
 - 解析 Pi CLI 入口。
 - 启动 Pi RPC 子进程。
-- 传入 provider、model 和供应商 API Key。
+- 使用 `core/` 中的模型配置解析结果传入 provider、model 和供应商 API Key。
 - 注册工具。
 - 注入任务上下文。
 - 转换 Pi 事件。

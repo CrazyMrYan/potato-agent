@@ -6,19 +6,18 @@
 
 已经确定：
 
-- 当前仓库 `coding-agent` 是知识库和总控仓库。
-- 第一阶段不在当前仓库直接写实现代码。
-- 第一阶段实现仓库拆为 `coding-agent-protocol` 和 `coding-agent-cli`。
-- `coding-agent-protocol` 只承载协议契约，不承载核心实现逻辑。
+- 当前仓库 `coding-agent` 是单一工作区仓库。
+- `wiki/` 存放知识库和阶段记录。
+- `protocol/` 只承载协议契约，不承载核心实现逻辑。
+- `core/` 承载 `AgentGateway`、`AgentOrchestrator`、`PiAdapter`、Pi 事件映射和会话适配。
+- `cli/` 是第一阶段验证壳，只负责命令解析、终端交互和渲染。
 - Pi 作为底层智能体执行引擎。
-- 本项目自己的产品能力沉在 `AgentOrchestrator`。
-- CLI 是第一阶段验证壳。
+- 本项目自己的产品能力沉在 `core/` 的 `AgentOrchestrator`。
 - CLI 已接入 `@earendil-works/pi-coding-agent` 的 `RpcClient`。
 - 当前真实 Pi 路径使用 `PiRpcAdapter` 启动 Pi RPC 子进程。
 - CLI 已支持一次性 `run` 和持久 RPC 会话的 `chat`。
 - 协议已补充 `assistant.delta`，用于承载 Pi 输出的正文片段和 thinking 片段。
 - Pi 工具事件会提取 `args` 中的关键参数，例如 `read` 的文件路径和 `bash` 的命令。
-- 当前 `AgentOrchestrator`、`PiEventMapper`、`PiRpcAdapter` 暂放在 CLI 仓库是阶段折中，下一阶段应拆到 `coding-agent-core` 或 `coding-agent-runtime`。
 - 独立 `coding-agent-runtime` 仓库仍作为后续演进方向。
 
 ## 阶段文档
@@ -31,16 +30,17 @@
 
 ## 工作区布局
 
-项目使用一个父级工作区目录管理多个独立 Git 仓库：
+项目使用单一 Git 仓库和 pnpm workspace 管理多个包：
 
 ```text
-/Users/yanjiahui/Desktop/coding-agent-workspace/
-  coding-agent/           # 知识库和总控仓库
-  coding-agent-protocol/  # 协议类型仓库
-  coding-agent-cli/       # CLI 验证壳仓库
+/Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent/
+  wiki/      # 知识库和阶段记录
+  protocol/  # @coding-agent/protocol
+  core/      # @coding-agent/core
+  cli/       # @coding-agent/cli
 ```
 
-这些仓库保持 Git 历史独立，不合并成 monorepo。
+旧的 sibling 仓库 `coding-agent-cli/` 和 `coding-agent-protocol/` 是前期验证遗留目录，当前目标结构以本仓库子目录为准。
 
 ## Wiki 维护规则
 
@@ -86,14 +86,15 @@ docs: record validation result
 
 状态：已完成。
 
-实现仓库：
+实现目录：
 
-- `/Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent-protocol`
-- `/Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent-cli`
+- `/Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent/protocol`
+- `/Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent/core`
+- `/Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent/cli`
 
 新增能力：
 
-- `coding-agent-protocol` 新增 `assistant.delta` 事件，`channel` 区分 `text` 和 `thinking`。
+- `protocol/` 新增 `assistant.delta` 事件，`channel` 区分 `text` 和 `thinking`。
 - `PiEventMapper` 统一转换 Pi RPC 原始事件。
 - `tool_execution_start` 会从 Pi 的 `args` 提取关键信息：
   - `read` 展示读取文件路径。
@@ -108,12 +109,12 @@ docs: record validation result
 交互命令：
 
 ```text
-cd /Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent-cli
+cd /Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent
 
-pnpm dev chat \
+pnpm --filter @coding-agent/cli dev chat \
   --provider deepseek \
   --model deepseek-reasoner \
-  --workspace /Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent-protocol
+  --workspace /Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent/protocol
 ```
 
 说明：
@@ -124,11 +125,74 @@ pnpm dev chat \
 
 ## 执行验证记录
 
-### M1-M2：协议仓库和 CLI 骨架
+### M3.7：模型配置能力下沉到 core
 
 状态：已完成。
 
-实现仓库：
+调整原因：
+
+- CLI 应该只负责命令参数读取、终端输入和终端渲染。
+- provider、model、API Key、供应商环境变量映射属于核心运行配置，后续桌面端也需要复用。
+
+调整结果：
+
+- 新增 `core/src/pi/resolvePiAdapterOptions.ts`。
+- `@coding-agent/core` 导出 `resolvePiAdapterOptions` 和 `ModelConfigInput`。
+- `cli/` 不再保留独立模型配置解析文件。
+- `run` 和 `chat` 命令仍保持原有参数形态，不改变用户使用方式。
+
+验证结果：
+
+- `pnpm typecheck` 通过。
+- `pnpm test` 通过。
+
+### M3.6：单仓库 workspace 迁移和 core 拆分
+
+状态：已完成。
+
+当前结构：
+
+```text
+/Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent/
+  wiki/
+  protocol/
+  core/
+  cli/
+```
+
+迁移结果：
+
+- `protocol/` 是 `@coding-agent/protocol`。
+- `core/` 是 `@coding-agent/core`，包含 `AgentGateway`、`AgentOrchestrator`、`PiAdapter`、`PiRpcAdapter`、`PiRpcSessionAdapter`、`PiEventMapper`。
+- `core/` 负责模型配置解析、供应商凭证映射和 Pi adapter option 组装。
+- `cli/` 是 `@coding-agent/cli`，只包含命令入口、终端输入、终端渲染和 CLI 测试。
+- 根目录新增 `pnpm-workspace.yaml` 和 workspace 脚本。
+
+验证命令：
+
+```text
+cd /Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent
+
+pnpm typecheck
+pnpm test
+pnpm build
+pnpm --filter @coding-agent/cli dev --help
+```
+
+结果：
+
+- `protocol/`、`core/`、`cli/` 的类型检查、测试和构建均通过。
+- 新路径下 CLI 能正常显示 `run` 和 `chat` 命令。
+
+### M1-M2：协议和 CLI 骨架历史记录
+
+状态：已完成。
+
+说明：
+
+M1-M2 最初在 sibling 仓库中验证，M3.6 已迁入当前单仓库 workspace。以下路径和提交只作为历史记录，不再代表当前目标结构。
+
+历史实现仓库：
 
 - `/Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent-protocol`
 - `/Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent-cli`
@@ -138,7 +202,7 @@ pnpm dev chat \
 - `coding-agent-protocol`: `0f808a3 feat: initialize protocol contracts`
 - `coding-agent-cli`: `8949599 feat: initialize cli skeleton`
 
-验证命令：
+历史验证命令：
 
 ```text
 cd /Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent-protocol && pnpm test && pnpm typecheck && pnpm build
@@ -147,10 +211,10 @@ cd /Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent-cli && pnpm test
 
 结果：
 
-- `coding-agent-protocol` 类型、测试和构建通过。
-- `coding-agent-cli` 可以通过 `FakePiAdapter` 输出完整模拟事件流。
+- 历史 `coding-agent-protocol` 类型、测试和构建通过。
+- 历史 `coding-agent-cli` 可以通过 `FakePiAdapter` 输出完整模拟事件流。
 - `agent run "测试任务"` 已输出任务开始、步骤、工具调用、diff 和任务完成事件。
-- 当前还没有接入 trace、diff 命令、权限策略、工具边界和真实 Pi。
+- 当时还没有接入 trace、diff 命令、权限策略、工具边界和真实 Pi。
 
 下一步：
 
@@ -161,9 +225,10 @@ cd /Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent-cli && pnpm test
 
 状态：已完成配置能力和事件级流式输出；真实模型调用等待有效 API Key。
 
-实现仓库：
+实现目录：
 
-- `/Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent-cli`
+- `/Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent/core`
+- `/Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent/cli`
 
 新增能力：
 
@@ -190,27 +255,29 @@ cd /Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent-cli && pnpm test
 模型配置命令：
 
 ```text
-cd /Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent-cli
+cd /Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent
 
-pnpm dev run "只读说明这个项目的目录结构，不要修改文件" \
+pnpm --filter @coding-agent/cli dev run "只读说明这个项目的目录结构，不要修改文件" \
   --provider deepseek \
   --model deepseek-chat \
-  --workspace /Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent-protocol
+  --workspace /Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent/protocol
 ```
 
 也可以显式传入凭证：
 
 ```text
-pnpm dev run "只读说明这个项目的目录结构，不要修改文件" \
+pnpm --filter @coding-agent/cli dev run "只读说明这个项目的目录结构，不要修改文件" \
   --provider deepseek \
   --model deepseek-chat \
   --api-key "$DEEPSEEK_API_KEY" \
-  --workspace /Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent-protocol
+  --workspace /Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent/protocol
 ```
 
 验证命令：
 
 ```text
+cd /Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent
+
 pnpm test
 pnpm typecheck
 pnpm build
@@ -218,7 +285,7 @@ pnpm build
 
 验证结果：
 
-- `coding-agent-cli` 测试、类型检查和构建通过。
+- 当前 workspace 测试、类型检查和构建通过。
 - 未提供对应供应商 API Key 时，CLI 会在配置层直接失败，并提示需要哪个环境变量或 `--api-key`。
 - 使用无效 `--api-key invalid-test-key` 时，CLI 已进入 Pi RPC 路径，输出 `步骤：启动 Pi RPC：deepseek/deepseek-chat`。
 - 当前已实现事件级流式输出：Pi 的 step/tool 事件到达后会即时转发到 CLI。

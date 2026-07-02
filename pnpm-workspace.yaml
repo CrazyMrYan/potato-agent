@@ -1,0 +1,4 @@
+packages:
+  - "protocol"
+  - "core"
+  - "cli"

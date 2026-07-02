@@ -1,5 +1,7 @@
 # MVP Execution Validation Implementation Plan
 
+> 历史计划：这份计划记录 M1-M2 时期的 sibling repo 执行方案。当前项目已经迁入单一 pnpm workspace，实际结构以 `/Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent/{wiki,protocol,core,cli}` 为准。继续执行前先看 `wiki/project-state.md` 和 `wiki/technical-plan-mvp.md`。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Build and validate the first CLI-based coding agent MVP across `coding-agent-protocol` and `coding-agent-cli`, proving the agent event loop before desktop work.

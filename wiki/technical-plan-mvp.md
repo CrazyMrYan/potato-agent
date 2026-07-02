@@ -22,12 +22,12 @@
 
 ## 技术路线
 
-采用“独立仓库 + Pi RPC 接入 + 协议边界先行”的路线。
+采用“单仓库 workspace + Pi RPC 接入 + 协议边界先行”的路线。
 
 第一版运行形态：
 
 ```text
-coding-agent-cli
+cli/
   -> AgentGateway
   -> AgentOrchestrator
   -> PiRpcAdapter
@@ -40,7 +40,7 @@ coding-agent-cli
 后续可演进形态：
 
 ```text
-coding-agent-cli / coding-agent-desktop
+cli/ / desktop/
   -> AgentGateway
   -> AgentOrchestrator
   -> RuntimePiAdapter
@@ -51,29 +51,27 @@ coding-agent-cli / coding-agent-desktop
 
 第一阶段先使用 Pi SDK 已提供的 `RpcClient` 启动 Pi RPC 子进程。这样可以更早验证真实 Pi 路径，同时仍保留后续拆出独立 `coding-agent-runtime` 仓库的能力。
 
-## 仓库拆分
+## 工作区拆分
 
-当前仓库 `coding-agent` 继续作为知识库和总控仓库，不放第一阶段实现代码。
+当前仓库 `coding-agent` 是单一 Git 仓库，使用 pnpm workspace 管理模块。
 
-第一阶段建议新建两个实现仓库：
+当前目录结构：
 
 ```text
-coding-agent-protocol
-  定义稳定协议、事件、任务输入、权限请求、diff 数据结构。
-  不依赖 Pi，不依赖 CLI。
-
-coding-agent-cli
-  第一阶段可执行产品。
-  依赖 coding-agent-protocol。
-  内部包含 AgentGateway、AgentOrchestrator、PiRpcAdapter、Tool Boundary。
+coding-agent/
+  wiki/      知识库和阶段记录
+  protocol/  @coding-agent/protocol，稳定协议和类型契约
+  core/      @coding-agent/core，AgentGateway、AgentOrchestrator、PiAdapter、工具边界
+  cli/       @coding-agent/cli，命令解析、终端交互和渲染
 ```
 
-暂不单独拆 `coding-agent-runtime`。等 Pi RPC 路径跑通并完成真实任务验证，再把本项目 runtime 拆成独立仓库。
+暂不单独拆 `coding-agent-runtime`。等 Pi RPC 路径跑通并完成真实任务验证，再从 `core/` 抽出本项目 runtime 子进程。
 
 原因：
 
-- `protocol` 必须独立，因为它是 CLI、桌面端、runtime 的共同边界。
-- `cli` 是第一阶段唯一宿主，可以先承载编排层和工具层，减少仓库数量。
+- `protocol/` 必须保持纯契约，因为它是 CLI、桌面端、runtime 的共同边界。
+- `core/` 承载可复用核心能力，避免 CLI 变成事实核心层。
+- `cli/` 是第一阶段唯一宿主，只负责验证壳和终端交互。
 - `runtime` 过早拆分会增加进程通信、版本管理和调试成本。
 
 ## 技术栈
@@ -82,7 +80,7 @@ coding-agent-cli
 | --- | --- | --- |
 | 语言 | TypeScript | 适合 CLI、协议、Node 工具层和后续桌面端复用 |
 | 运行时 | Node.js | 便于接入文件系统、Git、Shell、Pi SDK；Pi 包声明需要 `>=22.19.0` |
-| 包管理 | pnpm | 适合后续 workspace，但独立仓库也可单独使用 |
+| 包管理 | pnpm workspace | 单仓库多包管理，保证 `protocol`、`core`、`cli` 边界清晰 |
 | CLI 框架 | commander | 命令解析简单稳定 |
 | 终端输出 | picocolors + 自定义 renderer | 第一版不引入复杂 TUI |
 | 交互确认 | @inquirer/prompts | 用于写文件、执行命令、删除文件等确认 |
@@ -91,11 +89,11 @@ coding-agent-cli
 | trace | JSONL 文件 | 流式写入，便于复盘和调试 |
 | 测试 | Vitest | TypeScript 项目启动成本低 |
 
-## coding-agent-protocol
+## protocol/
 
 ### 职责
 
-`coding-agent-protocol` 只定义类型和协议，不实现业务逻辑。
+`protocol/` 只定义类型和协议，不实现业务逻辑。
 
 它负责：
 
@@ -121,7 +119,7 @@ coding-agent-cli
 ### 目录结构
 
 ```text
-coding-agent-protocol/
+protocol/
   package.json
   tsconfig.json
   src/
@@ -190,11 +188,45 @@ export type ApprovalRequest = {
 };
 ```
 
-## coding-agent-cli
+## core/
 
 ### 职责
 
-`coding-agent-cli` 是第一阶段验证壳。
+`core/` 是第一阶段的核心能力层。
+
+它负责：
+
+- `AgentGateway` 和 `LocalAgentGateway`。
+- `AgentOrchestrator`。
+- `PiAdapter`、`PiRpcAdapter`、`PiRpcSessionAdapter`。
+- `PiEventMapper`。
+- 后续权限策略、trace、验证策略和工具边界。
+
+它不负责：
+
+- CLI 参数解析。
+- 终端输入。
+- 终端渲染。
+
+### 目录结构
+
+```text
+core/
+  package.json
+  tsconfig.json
+  src/
+    index.ts
+    gateway/
+    orchestrator/
+    pi/
+  tests/
+```
+
+## cli/
+
+### 职责
+
+`cli/` 是第一阶段验证壳。
 
 它负责：
 
@@ -204,16 +236,14 @@ export type ApprovalRequest = {
 - 展示标准化事件流。
 - 处理用户确认。
 - 落盘 trace。
-- 调用 AgentGateway。
+- 调用 `@coding-agent/core`。
 
-它不应该直接调用 Pi。所有 Pi 相关能力必须经过 `AgentOrchestrator -> PiAdapter`。
-
-当前 `AgentGateway`、`AgentOrchestrator` 和 `PiAdapter` 暂放在 `coding-agent-cli` 仓库，是第一阶段验证折中。长期方案中，这些模块应迁出 CLI，进入 `coding-agent-core` 或 `coding-agent-runtime`。`coding-agent-protocol` 仍只保存类型契约，不保存这些实现。
+它不应该直接调用 Pi。所有 Pi 相关能力必须经过 `@coding-agent/core` 中的 `AgentOrchestrator -> PiAdapter`。
 
 ### 目录结构
 
 ```text
-coding-agent-cli/
+cli/
   package.json
   tsconfig.json
   src/
@@ -222,28 +252,6 @@ coding-agent-cli/
       run.ts
       diff.ts
       trace.ts
-    gateway/
-      AgentGateway.ts
-      LocalAgentGateway.ts
-    orchestrator/
-      AgentOrchestrator.ts
-      approvalPolicy.ts
-      budgetPolicy.ts
-      verificationPolicy.ts
-      contextPolicy.ts
-    pi/
-      PiAdapter.ts
-      PiRpcAdapter.ts
-      resolvePiCliPath.ts
-    tools/
-      ToolBoundary.ts
-      fileTools.ts
-      gitTools.ts
-      searchTools.ts
-      shellTools.ts
-    trace/
-      TraceStore.ts
-      JsonlTraceStore.ts
     ui/
       renderEvent.ts
       promptApproval.ts
@@ -329,7 +337,7 @@ RuntimePiAdapter
 
 ### 模型配置
 
-CLI 第一阶段直接在 `agent run` 中配置模型：
+CLI 第一阶段在 `agent run` 和 `agent chat` 中接收模型参数，但参数校验、供应商凭证映射和 `PiAdapterOptions` 组装由 `core/` 负责。这样后续桌面端可以复用同一套模型配置逻辑，而不是复制 CLI 实现。
 
 ```text
 agent run "<任务描述>" \
@@ -519,7 +527,7 @@ type ApprovalDecision =
 
 必须覆盖：
 
-- `coding-agent-protocol` 类型导出。
+- `protocol/` 类型导出。
 - `ApprovalPolicy` 对不同工具动作的决策。
 - `AgentOrchestrator` 能把 PiAdapter 模拟事件转换成 AgentEvent。
 - `JsonlTraceStore` 能写入和读取 JSONL。
@@ -546,24 +554,25 @@ FakePiAdapter
 - M4：待规划
 - M5：待规划
 
-### M1：协议仓库
+### M1：协议模块
 
 产物：
 
-- `coding-agent-protocol` 仓库。
+- `protocol/` 模块。
 - 核心类型定义。
 - 类型导出测试。
 
 验收：
 
 - `pnpm test` 通过。
-- CLI 仓库可以依赖并导入协议类型。
+- `core/` 和 `cli/` 可以依赖并导入协议类型。
 
 ### M2：CLI 骨架
 
 产物：
 
-- `coding-agent-cli` 仓库。
+- `cli/` 模块。
+- `core/` 模块。
 - `agent run` 命令。
 - `LocalAgentGateway`。
 - `AgentOrchestrator`。
@@ -601,7 +610,7 @@ FakePiAdapter
 
 - 配置能力已完成。
 - 真实模型调用等待有效 API Key。
-- 当前 Node.js 为 `22.14.0`，正式验证前建议升级到 Pi 包声明的 `>=22.19.0`。
+- 当前 Node.js 已升级到 `v24.18.0`，满足 Pi 包声明的 `>=22.19.0` 要求。
 
 ### M3.5：工具详情和多轮交互
 
@@ -710,14 +719,13 @@ FakePiAdapter
 
 ## 下一步
 
-下一步不是直接做桌面端，而是先创建 `coding-agent-protocol` 和 `coding-agent-cli` 两个实现仓库。
+下一步不是直接做桌面端，而是在当前 workspace 内补齐核心能力。
 
 推荐执行顺序：
 
-1. 初始化 `coding-agent-protocol`。
-2. 定义协议类型和测试。
-3. 初始化 `coding-agent-cli`。
-4. 用 `FakePiAdapter` 跑通 CLI 事件流。
-5. 配置真实模型凭证并升级 Node.js。
-6. 加 trace、diff、权限和工具边界。
-7. 做真实 Pi 端到端任务验证。
+1. 在 `core/` 增加 trace、diff、权限和工具边界。
+2. 在 `cli/` 暴露 `agent trace`、`agent diff` 和确认交互。
+3. 配置真实模型凭证。
+4. 做真实 Pi 端到端只读任务验证。
+5. 做小范围写入任务验证。
+6. 评估是否从 `core/` 拆出独立 `coding-agent-runtime` 子进程。
