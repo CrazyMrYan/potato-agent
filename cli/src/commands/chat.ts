@@ -1,25 +1,25 @@
 import { input } from "@inquirer/prompts";
-import { PiRpcSessionAdapter, type ModelConfigInput, type PiSessionAdapter, resolvePiAdapterOptions } from "@coding-agent/core";
+import { AgentSessionFactory, type AgentConfig, type AgentSession } from "@coding-agent/core";
 import { EventStreamRenderer } from "../ui/EventStreamRenderer.js";
 
-export type ChatCommandOptions = ModelConfigInput & {
-  createSessionAdapter?: (options: ModelConfigInput) => PiSessionAdapter;
+export type ChatCommandOptions = AgentConfig & {
+  createSession?: (options: AgentConfig) => AgentSession;
   read?: () => Promise<string>;
   write?: (line: string) => void;
 };
 
 export async function chatCommand(options: ChatCommandOptions = {}): Promise<void> {
   const workspacePath = options.workspacePath ?? process.cwd();
-  const adapter = options.createSessionAdapter
-    ? options.createSessionAdapter({ ...options, workspacePath })
-    : new PiRpcSessionAdapter(resolvePiAdapterOptions({ ...options, workspacePath }));
+  const session = options.createSession
+    ? options.createSession({ ...options, workspacePath })
+    : new AgentSessionFactory().create({ ...options, workspacePath });
   const read = options.read ?? (() => input({ message: "你" }));
   const write = options.write ?? console.log;
 
-  write(`进入交互会话：${options.provider}/${options.model}`);
+  write(`进入交互会话：${options.provider ?? "未配置"}/${options.model ?? "未配置"}`);
   write("输入 /exit 退出。");
 
-  await adapter.start();
+  await session.start();
   try {
     while (true) {
       const prompt = (await read()).trim();
@@ -34,7 +34,7 @@ export async function chatCommand(options: ChatCommandOptions = {}): Promise<voi
       }
 
       const renderer = new EventStreamRenderer();
-      for await (const event of adapter.send(prompt)) {
+      for await (const event of session.send(prompt)) {
         const rendered = renderer.render(event);
         if (rendered) {
           write(rendered);
@@ -51,6 +51,6 @@ export async function chatCommand(options: ChatCommandOptions = {}): Promise<voi
       }
     }
   } finally {
-    await adapter.stop();
+    await session.stop();
   }
 }

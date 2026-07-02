@@ -2,7 +2,7 @@
 
 ## 当前阶段
 
-当前处于“第一阶段执行验证：M3 模型配置、Pi RPC 接入、工具详情事件和 CLI 多轮交互已完成，真实模型写入验证待继续”。
+当前处于“第一阶段执行验证：M4 TUI 交互壳和 core 配置收敛已完成，下一步进入 M5 trace/diff”。
 
 已经确定：
 
@@ -18,6 +18,7 @@
 - CLI 已支持一次性 `run` 和持久 RPC 会话的 `chat`。
 - 协议已补充 `assistant.delta`，用于承载 Pi 输出的正文片段和 thinking 片段。
 - Pi 工具事件会提取 `args` 中的关键参数，例如 `read` 的文件路径和 `bash` 的命令。
+- M4 已把 CLI 主入口改成 Ink TUI，并把运行时模型配置、会话创建能力继续收敛到 `core/`。
 - 独立 `coding-agent-runtime` 仓库仍作为后续演进方向。
 
 ## 阶段文档
@@ -74,13 +75,13 @@ docs: record validation result
 
 ## 下一步
 
-下一步是继续执行验证第一阶段的后续能力：
+下一步是执行 M5 trace/diff：
 
 1. 为 trace 和 diff 写独立执行计划。
-2. 加入 `JsonlTraceStore`、`agent trace` 和 `agent diff`。
-3. 为工具边界和权限策略写独立执行计划。
-4. 接入文件、搜索、Git、Shell 工具。
-5. 在提供真实模型凭证后，对其他本地项目执行端到端验证。
+2. 加入 `JsonlTraceStore`。
+3. 增加 `agent trace` 和 `agent diff`。
+4. `agent run` 和 TUI 任务执行后记录 trace。
+5. 通过 Git diff 生成 `ChangeSet`。
 
 ### M3.5：工具详情、推理片段和多轮交互
 
@@ -124,6 +125,53 @@ pnpm --filter @coding-agent/cli dev chat \
 - 这一步解决的是“同一会话多轮输入”和“事件里不要丢工具关键参数”，不是完整桌面端 UI。
 
 ## 执行验证记录
+
+### M4：TUI 交互壳和 core 配置收敛
+
+状态：已完成。
+
+目标：
+
+- 默认运行 `agent` 进入交互式 TUI。
+- TUI 只承载已有能力：状态栏、事件流、输入区、运行时模型配置和退出。
+- 不新增桌面端、复杂文件浏览器、图形 diff、多 tab 或插件能力。
+- 工作区默认使用启动目录。
+- 模型配置可以在运行时输入，而不是必须启动时通过参数传入。
+- 配置解析、供应商环境变量映射和 session 创建能力向 `core/` 收敛。
+
+技术选择：
+
+- 使用 Ink 作为 CLI TUI 层。
+- 保留 commander 作为命令入口和兼容命令解析。
+- 保留现有 `EventStreamRenderer` 作为事件文本格式化基础，TUI 负责布局。
+
+边界：
+
+- `core/`：`AgentConfig`、`AgentConfigStore`、`AgentSessionFactory`、`resolvePiAdapterOptions`。
+- `cli/`：TUI 状态、输入框、状态栏、事件列表、命令入口。
+- `protocol/`：本阶段不增加协议类型，除非实现中发现事件模型缺口。
+
+后续顺延：
+
+- Trace/diff 调整到 M5。
+- Tool Boundary 和权限策略调整到 M6。
+
+实现结果：
+
+- 新增 `core/src/config/AgentConfig.ts` 和 `core/src/config/AgentConfigStore.ts`。
+- 新增 `core/src/session/AgentSession.ts` 和 `core/src/session/AgentSessionFactory.ts`。
+- `chat` 兼容命令改为通过 `AgentSessionFactory` 创建会话，不再直接 new Pi session adapter。
+- CLI 引入 Ink TUI，默认 `agent` 入口进入交互式界面。
+- TUI 默认 workspace 使用启动目录。
+- TUI 支持 `/model <provider> <model> [apiKey]` 运行时配置模型。
+- TUI 启动时读取 `<workspace>/.coding-agent/config.json`，`/model` 会写回该配置文件。
+- TUI 支持 `/workspace`、`/model`、`/exit`。
+
+验证结果：
+
+- `pnpm --filter @coding-agent/core test` 通过。
+- `pnpm --filter @coding-agent/cli test` 通过。
+- `pnpm --filter @coding-agent/cli typecheck` 通过。
 
 ### M3.7：模型配置能力下沉到 core
 

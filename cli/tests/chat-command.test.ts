@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { PiSessionAdapter } from "@coding-agent/core";
+import { AgentSession, type PiSessionAdapter } from "@coding-agent/core";
 import { chatCommand } from "../src/commands/chat.js";
 
 class FakeSessionAdapter implements PiSessionAdapter {
@@ -34,7 +34,7 @@ describe("chat command", () => {
       model: "deepseek-reasoner",
       apiKey: "test-key",
       workspacePath: "/repo",
-      createSessionAdapter: () => adapter,
+      createSession: () => new AgentSession(adapter),
       read,
       write
     });
