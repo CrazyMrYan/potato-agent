@@ -2,7 +2,7 @@
 
 ## 当前阶段
 
-当前处于“第一阶段执行验证：M4 TUI 交互壳和 core 配置收敛已完成，下一步进入 M5 trace/diff”。
+当前处于“第一阶段执行验证：M4.6 Ink v7 TUI 迁移已完成，下一步进入 M5 trace/diff 与 SDK/runtime 权限验证”。
 
 已经确定：
 
@@ -18,7 +18,13 @@
 - CLI 已支持一次性 `run` 和持久 RPC 会话的 `chat`。
 - 协议已补充 `assistant.delta`，用于承载 Pi 输出的正文片段和 thinking 片段。
 - Pi 工具事件会提取 `args` 中的关键参数，例如 `read` 的文件路径和 `bash` 的命令。
-- M4 已把 CLI 主入口改成 Vue TUI，并把运行时模型配置、会话创建能力继续收敛到 `core/`。
+- M4 已把 CLI 主入口改成交互式 TUI，并把运行时模型配置、会话创建能力继续收敛到 `core/`。
+- M4.6 已按最新决策把 TUI 技术栈从 `@vue-tui/runtime` 切换为 Ink v7，其余核心架构不变。
+- M4.5 已把系统提示词、追加系统提示词、skills、MCP server 描述、工具 allow/deny 和权限策略纳入 `core/` 的 `AgentConfig`。
+- 当前 Pi RPC 路径可通过 Pi CLI 参数真实传入 `systemPrompt`、`appendSystemPrompt`、`skills` 和工具 allow/deny。
+- MCP server 配置和真正的工具二次确认策略已经有 core 模型，但还没有在 Pi RPC 形态下完全生效；后续需要切到 Pi SDK session 或本项目 runtime 来接管工具边界。
+- CLI/TUI 不再给模型输出增加“步骤：”“推理：”“工具开始：”这类固定前缀，模型最终输出按原文展示。
+- TUI 已移除右侧伪滚动条；当前保留 PageUp/PageDown 历史翻页和终端原生滚动，真实滚轮/滚动条需要更完整 TUI 能力或 runtime 支持。
 - 独立 `coding-agent-runtime` 仓库仍作为后续演进方向。
 
 ## 阶段文档
@@ -75,13 +81,90 @@ docs: record validation result
 
 ## 下一步
 
-下一步是执行 M5 trace/diff：
+下一步是执行 M5 trace/diff，并启动 SDK/runtime 权限验证：
 
 1. 为 trace 和 diff 写独立执行计划。
 2. 加入 `JsonlTraceStore`。
 3. 增加 `agent trace` 和 `agent diff`。
 4. `agent run` 和 TUI 任务执行后记录 trace。
 5. 通过 Git diff 生成 `ChangeSet`。
+6. 验证从 `RpcClient` 切到 Pi SDK session 或本项目 runtime 后，系统提示词、skills、MCP、工具 allow/deny 和二次确认是否能由 `core/` 完整托管。
+
+### M4.5：TUI 输出修正和 core 运行配置模型
+
+状态：已完成。
+
+调整原因：
+
+- 终端输出不应该强行套固定文案，模型输出什么就应该展示什么。
+- CLI/TUI 不能继续承载系统提示词、skill、MCP、工具权限等核心能力。
+- 右侧文本滚动条只是装饰，不具备真实滚动能力，容易误导。
+- 去掉固定文本前缀后，TUI 上色不能再依赖中文前缀判断。
+
+实现结果：
+
+- `core/src/config/AgentConfig.ts` 新增运行配置模型：
+  - `systemPrompt`
+  - `appendSystemPrompt`
+  - `skills`
+  - `mcpServers`
+  - `tools`
+  - `permissionPolicy`
+- `core/` 新增 `DEFAULT_AGENT_PERMISSION_POLICY`：
+  - 默认允许只读工具：`read`、`ls`、`grep`、`find`
+  - 默认需要确认的变更工具：`bash`、`edit`、`write`
+  - 默认不进入完全放开模式
+- `core/` 新增 `buildPiRpcArgs`，把当前 Pi CLI 已支持的配置转成 RPC 启动参数：
+  - `--system-prompt`
+  - `--append-system-prompt`
+  - `--skill`
+  - `--tools`
+  - `--exclude-tools`
+  - `--no-tools`
+  - `--no-builtin-tools`
+- `PiRpcAdapter` 和 `PiRpcSessionAdapter` 会把上述参数传入 `RpcClientOptions.args`。
+- `EventStreamRenderer` 新增结构化渲染结果 `RenderedAgentEvent`，TUI 按事件 kind 上色，不再靠中文前缀判断。
+- `EventStreamRenderer` 不再输出“步骤：”“推理：”“工具开始：”“工具完成：”“任务失败：”等固定标签。
+- TUI 事件列表改为 `{ kind, text }`，去掉右侧伪滚动条，并根据终端高度调整可见事件行数。
+
+当前边界：
+
+- 系统提示词、skills 和工具 allow/deny 在当前 Pi RPC 路径下可以通过 Pi CLI 参数传入。
+- MCP server 描述已进入 core 配置模型，但 Pi RPC CLI 参数没有直接 MCP server 入口；真正接入需要后续 SDK/runtime。
+- 工具二次确认策略已进入 core 配置模型，但当前 Pi RPC 子进程内部仍执行自己的工具策略；要完全由本项目控制，需要后续 Tool Boundary 或 SDK/runtime 适配。
+
+验证结果：
+
+- 新增 `core/tests/agent-runtime-config.test.ts`。
+- 新增 `cli/tests/tui-render.test.ts`。
+- 更新 `cli/tests/stream-renderer.test.ts`。
+
+### M4.6：Ink v7 TUI 迁移
+
+状态：已完成。
+
+调整原因：
+
+- `@vue-tui/runtime` 当前体验不满足 agent 终端需求。
+- 当前项目继续保持 Node.js / TypeScript / pnpm workspace，不切 Bun，不引入 OpenTUI。
+- 用户明确选择 Ink v7，其余架构保持不变。
+
+实现结果：
+
+- `cli/` 移除 `@vue-tui/runtime` 和 `vue`。
+- `cli/` 引入 Ink v7、React 19、`react-devtools-core`、`@types/react` 和 `ink-testing-library`。
+- `AgentTui` 改为 React/Ink TSX 组件。
+- 默认 `agent` 入口改为使用 Ink `render` 启动 TUI。
+- 根目录新增 `pnpm run dev`，直接转发到 `@coding-agent/cli dev`，避免在根目录运行时没有入口或误用旧产物。
+- 运行时模型配置、slash command、事件列表、PageUp/PageDown 历史翻页等现有能力保持不变。
+- `EventStreamRenderer` 仍然是 CLI 事件文本格式化层，TUI 只消费结构化 `{ kind, text }`。
+- TUI 首屏改为带边框状态区、无边框 transcript 区和带边框 input 行；正文输出区不加边框，减少复制模型内容时带出框线。
+
+验证结果：
+
+- `pnpm --filter @coding-agent/cli test` 通过。
+- `pnpm --filter @coding-agent/cli typecheck` 通过。
+- `pnpm run dev --help` 会从根目录进入 CLI dev 入口。
 
 ### M3.5：工具详情、推理片段和多轮交互
 
@@ -141,7 +224,8 @@ pnpm --filter @coding-agent/cli dev chat \
 
 技术选择：
 
-- 使用 `@vue-tui/runtime` 作为 CLI TUI 层。
+- 当前使用 Ink v7 作为 CLI TUI 层。
+- 历史实现曾使用 `@vue-tui/runtime`，M4.6 已迁移到 Ink v7。
 - 保留 commander 作为命令入口和兼容命令解析。
 - 保留现有 `EventStreamRenderer` 作为事件文本格式化基础，TUI 负责布局。
 
@@ -161,16 +245,16 @@ pnpm --filter @coding-agent/cli dev chat \
 - 新增 `core/src/config/AgentConfig.ts` 和 `core/src/config/AgentConfigStore.ts`。
 - 新增 `core/src/session/AgentSession.ts` 和 `core/src/session/AgentSessionFactory.ts`。
 - `chat` 兼容命令改为通过 `AgentSessionFactory` 创建会话，不再直接 new Pi session adapter。
-- CLI 引入 Vue TUI，默认 `agent` 入口进入交互式界面。
+- CLI 引入 Ink TUI，默认 `agent` 入口进入交互式界面。
 - TUI 默认 workspace 会从启动目录向上寻找 Git 根目录；从 `cli/dist` 直接启动也应落到项目根。
 - TUI 启动时确保生成 `<workspace>/.coding-agent/config.json`。
 - TUI 支持 `Ctrl+M` 打开模型配置选择器，用方向键选择 provider 和 model，并可输入 API Key。
 - TUI 支持输入 `/` 弹出命令候选菜单，可选择 `/model`、`/workspace`、`/exit`。
 - TUI 支持 `Ctrl+W` 查看工作区、`Ctrl+C` 退出。
 - TUI 事件区按内容类型上色：用户输入、步骤、推理、工具、成功、失败使用不同颜色。
-- TUI 事件区支持 `PageUp/PageDown` 或空输入时 `↑/↓` 滚动，并显示右侧文本滚动条。
+- TUI 事件区支持 `PageUp/PageDown` 或空输入时 `↑/↓` 翻页，不再显示伪滚动条。
 - TUI 事件区和输入区不使用边框，减少复制内容时带出框线。
-- TUI 使用 `shallowRef` 和 `markRaw` 保存 `AgentSession`，避免 Vue 代理 Pi RPC client 导致第二轮对话出现 `Illegal invocation`。
+- TUI 使用 React ref 保存 `AgentSession`，避免 UI runtime 代理 Pi RPC client。
 - Commander 只保留为默认入口、`run` 和 `chat` 兼容命令的薄路由层，模型配置不再放在默认启动参数里。
 
 验证结果：

@@ -1,6 +1,7 @@
 import type { PiAdapterOptions } from "./PiAdapter.js";
+import type { AgentConfig } from "../config/AgentConfig.js";
 
-export type ModelConfigInput = {
+export type ModelConfigInput = AgentConfig & {
   provider?: string;
   model?: string;
   apiKey?: string;
@@ -37,7 +38,13 @@ export function resolvePiAdapterOptions(input: ModelConfigInput): PiAdapterOptio
     workspacePath,
     apiKeyEnvName: apiKeyConfig.envName,
     apiKey: apiKeyConfig.apiKey,
-    timeoutMs: input.timeoutMs
+    timeoutMs: input.timeoutMs,
+    systemPrompt: input.systemPrompt,
+    appendSystemPrompt: input.appendSystemPrompt,
+    skills: input.skills,
+    mcpServers: input.mcpServers,
+    tools: input.tools,
+    permissionPolicy: input.permissionPolicy
   };
 }
 

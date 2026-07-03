@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { EventStreamRenderer } from "../src/ui/EventStreamRenderer.js";
 
 describe("EventStreamRenderer", () => {
-  it("groups streaming thinking and answer deltas into readable blocks", () => {
+  it("renders agent events without hard-coded Chinese prefixes around model content", () => {
     const renderer = new EventStreamRenderer({ colors: false });
     const lines = [
       renderer.render({ type: "step.started", taskId: "task_1", title: "Pi 开始新一轮推理" }),
@@ -17,9 +17,9 @@ describe("EventStreamRenderer", () => {
       .flatMap((line) => line.split("\n"));
 
     expect(lines).toEqual([
-      "步骤：Pi 开始新一轮推理",
-      "推理：The user",
-      "工具开始：read - 读取文件：src/index.ts",
+      "Pi 开始新一轮推理",
+      "The user",
+      "read 读取文件：src/index.ts",
       "## 项目概览",
       "这是模型最终输出"
     ]);
@@ -35,6 +35,6 @@ describe("EventStreamRenderer", () => {
       output: "line one\nline two\nline three"
     });
 
-    expect(line).toBe("工具完成：bash - line one line two...");
+    expect(line).toBe("bash line one line two...");
   });
 });

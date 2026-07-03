@@ -1,5 +1,6 @@
 import type { AgentEvent } from "@coding-agent/protocol";
 import { RpcClient, type RpcClientOptions } from "@earendil-works/pi-coding-agent";
+import { buildPiRpcArgs } from "../config/AgentConfig.js";
 import { PiEventMapper, type RawPiEvent } from "./PiEventMapper.js";
 import type { PiAdapterOptions } from "./PiAdapter.js";
 import { resolvePiCliPath } from "./resolvePiCliPath.js";
@@ -42,7 +43,8 @@ export class PiRpcSessionAdapter implements PiSessionAdapter {
       cwd: this.options.workspacePath,
       env: { [this.options.apiKeyEnvName]: this.options.apiKey },
       provider: this.options.provider,
-      model: this.options.model
+      model: this.options.model,
+      args: buildPiRpcArgs(this.options)
     });
 
     await client.start();

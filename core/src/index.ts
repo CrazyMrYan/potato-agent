@@ -1,5 +1,13 @@
-export type { AgentConfig, ResolvedAgentConfig } from "./config/AgentConfig.js";
-export { mergeAgentConfig } from "./config/AgentConfig.js";
+export type {
+  AgentConfig,
+  AgentMcpServerConfig,
+  AgentPermissionMode,
+  AgentPermissionPolicy,
+  AgentSkillConfig,
+  AgentToolConfig,
+  ResolvedAgentConfig
+} from "./config/AgentConfig.js";
+export { DEFAULT_AGENT_PERMISSION_POLICY, buildPiRpcArgs, mergeAgentConfig, resolveAgentPermissionPolicy } from "./config/AgentConfig.js";
 export { ensureDefaultAgentConfig, FileAgentConfigStore, type AgentConfigStore } from "./config/AgentConfigStore.js";
 export { resolveDefaultWorkspacePath } from "./config/Workspace.js";
 export type { AgentGateway } from "./gateway/AgentGateway.js";

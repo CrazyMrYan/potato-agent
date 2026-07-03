@@ -1,5 +1,5 @@
-import { h } from "vue";
-import { createApp } from "@vue-tui/runtime";
+import React from "react";
+import { render as renderInk } from "ink";
 import {
   AgentSessionFactory,
   ensureDefaultAgentConfig,
@@ -28,7 +28,13 @@ export function createTuiConfig(options: TuiCommandOptions = {}): AgentConfig {
     provider: options.provider,
     model: options.model,
     apiKey: options.apiKey,
-    timeoutMs: options.timeoutMs
+    timeoutMs: options.timeoutMs,
+    systemPrompt: options.systemPrompt,
+    appendSystemPrompt: options.appendSystemPrompt,
+    skills: options.skills,
+    mcpServers: options.mcpServers,
+    tools: options.tools,
+    permissionPolicy: options.permissionPolicy
   };
 }
 
@@ -58,12 +64,11 @@ export async function runTuiCommand(
     ((workspacePath: string, nextConfig: AgentConfig) => {
       return new FileAgentConfigStore(workspacePath).save(nextConfig);
     });
-  createApp({
-    render: () =>
-      h(AgentTui, {
+  renderInk(
+    React.createElement(AgentTui, {
         config,
         createSession: (sessionConfig: AgentConfig) => sessionFactory.create(sessionConfig),
         saveConfig: (nextConfig: AgentConfig) => saveConfig(nextConfig.workspacePath ?? process.cwd(), nextConfig)
       })
-  }).mount();
+  );
 }

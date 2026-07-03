@@ -6,6 +6,23 @@ export type EventStreamRendererOptions = {
   maxToolOutputLength?: number;
 };
 
+export type RenderedAgentEventKind =
+  | "user"
+  | "step"
+  | "thinking"
+  | "text"
+  | "tool"
+  | "success"
+  | "warning"
+  | "error"
+  | "diff"
+  | "muted";
+
+export type RenderedAgentEvent = {
+  kind: RenderedAgentEventKind;
+  text: string;
+};
+
 export class EventStreamRenderer {
   private pendingText = "";
   private pendingThinking = "";
@@ -18,66 +35,71 @@ export class EventStreamRenderer {
   }
 
   render(event: AgentEvent): string {
+    return this.renderEvent(event)
+      .map((item) => item.text)
+      .join("\n");
+  }
+
+  renderEvent(event: AgentEvent): RenderedAgentEvent[] {
     if (event.type === "assistant.delta") {
       if (event.channel === "thinking") {
         this.pendingThinking += event.text;
-        return "";
+        return [];
       }
 
       this.pendingText += event.text;
-      return "";
+      return [];
     }
 
-    const flushed = this.flush();
-    const current = this.renderImmediate(event);
-
-    if (flushed && current) {
-      return `${flushed}\n${current}`;
-    }
-
-    return flushed || current;
+    return [...this.flushEvents(), this.renderImmediate(event)];
   }
 
   flush(): string {
-    const lines: string[] = [];
+    return this.flushEvents()
+      .map((item) => item.text)
+      .join("\n");
+  }
+
+  flushEvents(): RenderedAgentEvent[] {
+    const events: RenderedAgentEvent[] = [];
 
     if (this.pendingThinking.trim()) {
-      lines.push(this.dim(`推理：${compactInline(this.pendingThinking)}`));
+      events.push({ kind: "thinking", text: this.dim(compactInline(this.pendingThinking)) });
       this.pendingThinking = "";
     }
 
     if (this.pendingText.trim()) {
-      lines.push(this.pendingText.trim());
+      events.push({ kind: "text", text: this.pendingText.trim() });
       this.pendingText = "";
     }
 
-    return lines.join("\n");
+    return events;
   }
 
-  private renderImmediate(event: Exclude<AgentEvent, { type: "assistant.delta" }>): string {
+  private renderImmediate(event: Exclude<AgentEvent, { type: "assistant.delta" }>): RenderedAgentEvent {
     switch (event.type) {
       case "task.started":
-        return this.cyan(`收到任务：${event.prompt}`);
+        return { kind: "user", text: this.cyan(event.prompt) };
       case "step.started":
-        return this.blue(`步骤：${event.title}`);
+        return { kind: "step", text: this.blue(event.title) };
       case "tool.started":
-        return this.gray(`工具开始：${event.tool} - ${event.summary}`);
+        return { kind: "tool", text: this.gray(joinParts(event.tool, event.summary)) };
       case "tool.finished":
         return event.success
-          ? this.green(`工具完成：${event.tool}${event.output ? ` - ${this.formatToolOutput(event.output)}` : ""}`)
-          : this.red(`工具失败：${event.tool}${event.output ? ` - ${this.formatToolOutput(event.output)}` : ""}`);
+          ? { kind: "success", text: this.green(joinParts(event.tool, event.output ? this.formatToolOutput(event.output) : undefined)) }
+          : { kind: "error", text: this.red(joinParts(event.tool, event.output ? this.formatToolOutput(event.output) : undefined)) };
       case "approval.requested":
-        return this.yellow(`需要确认：${event.request.title}`);
+        return { kind: "warning", text: this.yellow(event.request.title) };
       case "diff.produced":
-        return this.magenta(`产生 diff：${event.changeSet.files.length} 个文件`);
+        return { kind: "diff", text: this.magenta(`diff ${event.changeSet.files.length} 个文件`) };
       case "verification.started":
-        return this.gray(`开始验证：${event.command}`);
+        return { kind: "tool", text: this.gray(event.command) };
       case "verification.finished":
-        return event.exitCode === 0 ? this.green(`验证通过：${event.command}`) : this.red(`验证失败：${event.command}`);
+        return event.exitCode === 0 ? { kind: "success", text: this.green(event.command) } : { kind: "error", text: this.red(event.command) };
       case "task.finished":
-        return event.summary;
+        return { kind: "text", text: event.summary };
       case "task.failed":
-        return this.red(`任务失败：${event.error.code} ${event.error.message}`);
+        return { kind: "error", text: this.red(`${event.error.code} ${event.error.message}`) };
     }
   }
 
@@ -120,6 +142,10 @@ export class EventStreamRenderer {
 
 function compactInline(value: string): string {
   return value.replace(/\s+/g, " ").trim();
+}
+
+function joinParts(first: string, second: string | undefined): string {
+  return second ? `${first} ${second}` : first;
 }
 
 function truncate(value: string, maxLength: number): string {

@@ -82,7 +82,7 @@ coding-agent/
 | 运行时 | Node.js | 便于接入文件系统、Git、Shell、Pi SDK；Pi 包声明需要 `>=22.19.0` |
 | 包管理 | pnpm workspace | 单仓库多包管理，保证 `protocol`、`core`、`cli` 边界清晰 |
 | CLI 框架 | commander | 命令解析简单稳定 |
-| 终端输出 | @vue-tui/runtime + picocolors + 自定义 renderer | M4 引入 Vue TUI，renderer 继续负责事件文本格式化 |
+| 终端输出 | Ink v7 + React + picocolors + 自定义 renderer | M4.6 切换到 Ink v7，renderer 继续负责事件文本格式化 |
 | 交互确认 | @inquirer/prompts | 用于写文件、执行命令、删除文件等确认 |
 | diff 生成 | git diff 优先 | 以 Git 作为变更边界，避免自己实现 diff |
 | 搜索 | ripgrep 调用 | 直接复用开发者环境中成熟工具 |
@@ -200,6 +200,7 @@ export type ApprovalRequest = {
 - `AgentOrchestrator`。
 - `PiAdapter`、`PiRpcAdapter`、`PiRpcSessionAdapter`。
 - `AgentConfig`、配置读取、配置校验和 session 创建。
+- 系统提示词、skills、MCP server 描述、工具 allow/deny 和权限策略模型。
 - `PiEventMapper`。
 - 后续权限策略、trace、验证策略和工具边界。
 
@@ -240,6 +241,8 @@ core/
 - 调用 `@coding-agent/core`。
 
 它不应该直接调用 Pi。所有 Pi 相关能力必须经过 `@coding-agent/core` 中的 `AgentOrchestrator -> PiAdapter`。
+
+CLI 也不应该承载系统提示词、skills、MCP、权限策略或工具策略。CLI 可以提供交互入口，但配置模型和执行策略必须落在 `core/`。
 
 ### 目录结构
 
@@ -432,7 +435,7 @@ agent
 行为：
 
 1. 默认 workspace 从启动目录向上寻找 Git 根目录，找不到 Git 根时才使用当前目录。
-2. 进入 Vue TUI。
+2. 进入 Ink TUI。
 3. 如果 provider、model 或 API Key 缺失，在 TUI 内提示运行时配置。
 4. TUI 启动时确保生成 `<workspace>/.coding-agent/config.json`。
 5. 用户通过 `Ctrl+M` 打开模型配置选择器，用方向键选择 provider 和 model，并可输入 API Key；配置保存后写回 workspace 配置文件。
@@ -637,7 +640,7 @@ FakePiAdapter
 
 产物：
 
-- Vue TUI 默认入口。
+- Ink TUI 默认入口。
 - 运行时模型配置。
 - `AgentConfig` 和 core 配置读取/解析。
 - `AgentSessionFactory`，让 CLI 不直接创建 Pi session adapter。
@@ -739,7 +742,7 @@ FakePiAdapter
 推荐执行顺序：
 
 1. 在 `core/` 增加运行时配置和 session facade。
-2. 在 `cli/` 引入 Vue TUI 默认入口。
+2. 在 `cli/` 引入 Ink TUI 默认入口。
 3. 保留 `agent run` 和 `agent chat` 兼容命令。
 4. 在后续 M5 增加 trace/diff。
 5. 在后续 M6 增加权限和工具边界。
