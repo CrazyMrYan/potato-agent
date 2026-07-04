@@ -15,6 +15,7 @@ export type { DiffService } from "./diff/DiffService.js";
 export type { AgentGateway } from "./gateway/AgentGateway.js";
 export { LocalAgentGateway } from "./gateway/LocalAgentGateway.js";
 export { AgentOrchestrator } from "./orchestrator/AgentOrchestrator.js";
+export { RuntimeCapabilityReporter } from "./runtime/RuntimeCapabilityReporter.js";
 export { AgentSession } from "./session/AgentSession.js";
 export { AgentSessionFactory } from "./session/AgentSessionFactory.js";
 export { ToolBoundary } from "./tools/ToolBoundary.js";

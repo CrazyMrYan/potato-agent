@@ -2,7 +2,7 @@
 
 ## 当前阶段
 
-当前处于“第一阶段执行验证：M4.6 Ink v7 TUI 迁移已完成，下一步进入 M5 trace/diff 与 SDK/runtime 权限验证”。
+当前处于“第一阶段执行验证：M5 trace/diff 与 SDK/runtime 权限验证开发中”。
 
 已经确定：
 
@@ -81,14 +81,15 @@ docs: record validation result
 
 ## 下一步
 
-下一步是执行 M5 trace/diff，并启动 SDK/runtime 权限验证：
+下一步是完成 M5 trace/diff，并以 runtime capability report 的方式验证 SDK/runtime 权限接管：
 
-1. 为 trace 和 diff 写独立执行计划。
-2. 加入 `JsonlTraceStore`。
-3. 增加 `agent trace` 和 `agent diff`。
-4. `agent run` 和 TUI 任务执行后记录 trace。
-5. 通过 Git diff 生成 `ChangeSet`。
-6. 验证从 `RpcClient` 切到 Pi SDK session 或本项目 runtime 后，系统提示词、skills、MCP、工具 allow/deny 和二次确认是否能由 `core/` 完整托管。
+1. 完成 `JsonlTraceStore` 和 Git-backed `DiffService`。
+2. 增加 `agent trace` 和 `agent diff`。
+3. `agent run` 和 TUI 任务执行后记录 trace。
+4. 通过 Git diff 生成 `ChangeSet`。
+5. 落地独立可测试的 `ToolBoundary`。
+6. 当前 RPC 路径只能透传 system prompt、skills 和工具 allow/deny，不能声明 core 已接管最终工具权限。
+7. 后续只有 SDK/runtime adapter 能在工具执行前调用 `ToolBoundary` 时，才能声明权限由本项目接管。
 
 ### M4.5：TUI 输出修正和 core 运行配置模型
 

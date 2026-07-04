@@ -265,6 +265,8 @@ CLI Host
 
 每个工具调用都要产生事件，写入 trace，并根据权限策略判断是否需要确认。
 
+M5 先把 `ToolBoundary` 作为 `core/` 中可测试的权限决策点落地。`PiRpcAdapter` 默认路径仍由 Pi RPC 执行真实工具调用，因此 trace 必须记录 RPC 路径不具备 core 级工具拦截。后续只有 SDK/runtime adapter 能在工具执行前调用 `ToolBoundary` 时，才能声明权限由本项目接管。
+
 ### Trace Store
 
 Trace Store 记录一次任务的完整过程。第一版可以先用文件落盘，不急于引入数据库。
