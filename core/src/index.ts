@@ -10,6 +10,8 @@ export type {
 export { DEFAULT_AGENT_PERMISSION_POLICY, buildPiRpcArgs, mergeAgentConfig, resolveAgentPermissionPolicy } from "./config/AgentConfig.js";
 export { ensureDefaultAgentConfig, FileAgentConfigStore, type AgentConfigStore } from "./config/AgentConfigStore.js";
 export { resolveDefaultWorkspacePath } from "./config/Workspace.js";
+export { GitDiffService } from "./diff/DiffService.js";
+export type { DiffService } from "./diff/DiffService.js";
 export type { AgentGateway } from "./gateway/AgentGateway.js";
 export { LocalAgentGateway } from "./gateway/LocalAgentGateway.js";
 export { AgentOrchestrator } from "./orchestrator/AgentOrchestrator.js";
