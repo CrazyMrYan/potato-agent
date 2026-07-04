@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 import { Command } from "commander";
 import { chatCommand } from "./commands/chat.js";
+import { diffCommand } from "./commands/diff.js";
 import { RenderedTaskFailedError, runCommand } from "./commands/run.js";
+import { traceCommand } from "./commands/trace.js";
 import { runTuiCommand } from "./commands/tui.js";
 import { formatCliError } from "./cliError.js";
 
@@ -64,6 +66,35 @@ program
         workspacePath: options.workspace,
         timeoutMs: Number(options.timeoutMs)
       });
+    } catch (error) {
+      console.error(formatCliError(error));
+      process.exitCode = 1;
+    }
+  });
+
+program
+  .command("diff")
+  .description("显示当前工作区的 Git diff")
+  .option("--workspace <path>", "要查看的项目目录", process.cwd())
+  .option("--no-patch", "只显示文件列表，不显示 patch")
+  .action(async (options: { workspace: string; patch: boolean }) => {
+    try {
+      await diffCommand({ workspacePath: options.workspace, patch: options.patch });
+    } catch (error) {
+      console.error(formatCliError(error));
+      process.exitCode = 1;
+    }
+  });
+
+program
+  .command("trace")
+  .description("查看任务 trace")
+  .argument("[taskId]", "任务 ID")
+  .option("--workspace <path>", "要查看的项目目录", process.cwd())
+  .option("--raw", "输出原始 JSONL 条目")
+  .action(async (taskId: string | undefined, options: { workspace: string; raw?: boolean }) => {
+    try {
+      await traceCommand({ workspacePath: options.workspace, taskId, raw: options.raw });
     } catch (error) {
       console.error(formatCliError(error));
       process.exitCode = 1;
