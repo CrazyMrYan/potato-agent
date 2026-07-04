@@ -17,6 +17,8 @@ export { LocalAgentGateway } from "./gateway/LocalAgentGateway.js";
 export { AgentOrchestrator } from "./orchestrator/AgentOrchestrator.js";
 export { AgentSession } from "./session/AgentSession.js";
 export { AgentSessionFactory } from "./session/AgentSessionFactory.js";
+export { ToolBoundary } from "./tools/ToolBoundary.js";
+export type { ToolAuthorization, ToolBoundaryDependencies, ToolDecision, ToolRequest } from "./tools/ToolBoundary.js";
 export { FakePiAdapter } from "./pi/FakePiAdapter.js";
 export type { PiAdapter, PiAdapterEvent, PiAdapterOptions } from "./pi/PiAdapter.js";
 export { PiEventMapper, type RawPiEvent } from "./pi/PiEventMapper.js";
