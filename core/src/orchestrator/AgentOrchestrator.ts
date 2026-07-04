@@ -1,4 +1,5 @@
 import type { AgentEvent, RunTaskInput } from "@coding-agent/protocol";
+import type { TaskFailedEvent, TaskFinishedEvent } from "@coding-agent/protocol";
 import type { DiffService } from "../diff/DiffService.js";
 import type { PiAdapter } from "../pi/PiAdapter.js";
 import type { TraceStore } from "../trace/TraceStore.js";
@@ -32,7 +33,7 @@ export class AgentOrchestrator {
     await this.traceEvent(started);
     yield started;
 
-    let finalEvent: AgentEvent | undefined;
+    let finalEvent: TaskFinishedEvent | TaskFailedEvent | undefined;
     for await (const event of this.piAdapter.run(input)) {
       if (event.type === "task.finished" || event.type === "task.failed") {
         finalEvent = event;
@@ -44,7 +45,7 @@ export class AgentOrchestrator {
     }
 
     if (finalEvent?.type !== "task.failed") {
-      const changeSet = await this.dependencies.diffService?.getChangeSet(input.workspacePath);
+      const changeSet = await this.tryGetChangeSet(input.workspacePath);
       if (changeSet) {
         await this.trace({ timestamp: nowIso(), taskId: input.taskId, kind: "diff", changeSet });
         if (changeSet.files.length > 0) {
@@ -83,5 +84,13 @@ export class AgentOrchestrator {
 
   private async trace(entry: Parameters<TraceStore["append"]>[0]): Promise<void> {
     await this.dependencies.traceStore?.append(entry);
+  }
+
+  private async tryGetChangeSet(workspacePath: string) {
+    try {
+      return await this.dependencies.diffService?.getChangeSet(workspacePath);
+    } catch {
+      return undefined;
+    }
   }
 }

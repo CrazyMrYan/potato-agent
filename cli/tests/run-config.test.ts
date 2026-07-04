@@ -125,4 +125,35 @@ describe("run command model configuration", () => {
       })
     ).rejects.toThrow(/PI_INIT_FAILED Pi 启动失败/);
   });
+
+  it("wires trace store and diff service into orchestrator", async () => {
+    const writes: string[] = [];
+    const adapter: PiAdapter = {
+      async *run(input) {
+        yield { type: "task.finished", taskId: input.taskId, summary: "done" };
+      }
+    };
+
+    await runCommand("解释项目", {
+      workspacePath: "/tmp/example",
+      createAdapter: () => adapter,
+      createTraceStore: () => ({
+        async append() {},
+        async read() {
+          return [];
+        },
+        async list() {
+          return [];
+        }
+      }),
+      createDiffService: () => ({
+        async getChangeSet() {
+          return { files: [{ path: "src/a.ts", status: "modified", diff: "patch" }] };
+        }
+      }),
+      write: (line) => writes.push(line)
+    });
+
+    expect(writes.join("\n")).toContain("diff 1 个文件");
+  });
 });

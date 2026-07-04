@@ -1,5 +1,15 @@
 import type { RunTaskInput } from "@coding-agent/protocol";
-import { AgentOrchestrator, LocalAgentGateway, type PiAdapter, PiRpcAdapter, resolvePiAdapterOptions } from "@coding-agent/core";
+import {
+  AgentOrchestrator,
+  GitDiffService,
+  JsonlTraceStore,
+  LocalAgentGateway,
+  type DiffService,
+  type PiAdapter,
+  PiRpcAdapter,
+  resolvePiAdapterOptions,
+  type TraceStore
+} from "@coding-agent/core";
 import { EventStreamRenderer } from "../ui/EventStreamRenderer.js";
 
 export class RenderedTaskFailedError extends Error {
@@ -13,6 +23,8 @@ export type RunCommandOptions = {
   workspacePath?: string;
   timeoutMs?: number;
   createAdapter?: (options: Required<Pick<RunCommandOptions, "workspacePath">> & RunCommandOptions) => PiAdapter;
+  createTraceStore?: (workspacePath: string) => TraceStore;
+  createDiffService?: () => DiffService;
   write?: (line: string) => void;
 };
 
@@ -32,7 +44,9 @@ export async function runCommand(prompt: string, options: RunCommandOptions = {}
   };
 
   const adapter = options.createAdapter ? options.createAdapter({ workspacePath, ...options }) : createAdapter({ ...options, workspacePath });
-  const gateway = new LocalAgentGateway(new AgentOrchestrator(adapter));
+  const traceStore = options.createTraceStore ? options.createTraceStore(workspacePath) : new JsonlTraceStore(workspacePath);
+  const diffService = options.createDiffService ? options.createDiffService() : new GitDiffService();
+  const gateway = new LocalAgentGateway(new AgentOrchestrator(adapter, { traceStore, diffService }));
   const write = options.write ?? console.log;
   const renderer = new EventStreamRenderer();
 
