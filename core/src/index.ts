@@ -22,3 +22,6 @@ export { PiRpcAdapter, type PiRpcClientLike } from "./pi/PiRpcAdapter.js";
 export { PiRpcSessionAdapter, type PiSessionAdapter, type PiSessionClientLike } from "./pi/PiSessionAdapter.js";
 export { resolvePiAdapterOptions, type ModelConfigInput } from "./pi/resolvePiAdapterOptions.js";
 export { resolvePiCliPath } from "./pi/resolvePiCliPath.js";
+export { JsonlTraceStore } from "./trace/JsonlTraceStore.js";
+export type { RuntimeCapabilityReport, TraceEntry, TraceStore, TraceSummary } from "./trace/TraceStore.js";
+export { nowIso } from "./trace/TraceStore.js";
