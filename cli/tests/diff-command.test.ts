@@ -18,4 +18,26 @@ describe("diff command", () => {
     expect(write).toHaveBeenCalledWith("modified src/a.ts");
     expect(write).toHaveBeenCalledWith("patch");
   });
+
+  it("resolves the default workspace before reading diff", async () => {
+    const write = vi.fn();
+    const seen: string[] = [];
+
+    await diffCommand({
+      cwd: "/repo/cli",
+      write,
+      resolveWorkspacePath: async (cwd) => {
+        seen.push(cwd);
+        return "/repo";
+      },
+      diffService: {
+        async getChangeSet(workspacePath) {
+          seen.push(workspacePath);
+          return { files: [] };
+        }
+      }
+    });
+
+    expect(seen).toEqual(["/repo/cli", "/repo"]);
+  });
 });

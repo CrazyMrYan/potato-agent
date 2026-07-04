@@ -21,6 +21,52 @@ describe("trace command", () => {
     expect(write).toHaveBeenCalledWith("task_1 3 entries 2026-07-04T00:00:00.000Z");
   });
 
+  it("resolves the default workspace before listing traces", async () => {
+    const write = vi.fn();
+    const seen: string[] = [];
+
+    await traceCommand({
+      cwd: "/repo/cli",
+      write,
+      resolveWorkspacePath: async (cwd) => {
+        seen.push(cwd);
+        return "/repo";
+      },
+      traceStoreFactory: (workspacePath) => ({
+        async list() {
+          seen.push(workspacePath);
+          return [];
+        },
+        async read() {
+          return [];
+        },
+        async append() {}
+      })
+    });
+
+    expect(seen).toEqual(["/repo/cli", "/repo"]);
+  });
+
+  it("explains how traces are created when there are none", async () => {
+    const write = vi.fn();
+
+    await traceCommand({
+      workspacePath: "/repo",
+      write,
+      traceStore: {
+        async list() {
+          return [];
+        },
+        async read() {
+          return [];
+        },
+        async append() {}
+      }
+    });
+
+    expect(write).toHaveBeenCalledWith("No traces yet. Run an agent task first with `agent run` or the TUI.");
+  });
+
   it("prints raw trace entries for a task id", async () => {
     const write = vi.fn();
     await traceCommand({

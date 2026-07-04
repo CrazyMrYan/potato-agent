@@ -7,6 +7,7 @@ import {
   type DiffService,
   type PiAdapter,
   PiRpcAdapter,
+  resolveDefaultWorkspacePath,
   resolvePiAdapterOptions,
   type TraceStore
 } from "@coding-agent/core";
@@ -21,10 +22,12 @@ export type RunCommandOptions = {
   model?: string;
   apiKey?: string;
   workspacePath?: string;
+  cwd?: string;
   timeoutMs?: number;
   createAdapter?: (options: Required<Pick<RunCommandOptions, "workspacePath">> & RunCommandOptions) => PiAdapter;
   createTraceStore?: (workspacePath: string) => TraceStore;
   createDiffService?: () => DiffService;
+  resolveWorkspacePath?: (cwd: string) => Promise<string>;
   write?: (line: string) => void;
 };
 
@@ -34,7 +37,7 @@ export function createAdapter(options: RunCommandOptions): PiAdapter {
 
 export async function runCommand(prompt: string, options: RunCommandOptions = {}): Promise<void> {
   const taskId = `task_${Date.now()}`;
-  const workspacePath = options.workspacePath ?? process.cwd();
+  const workspacePath = options.workspacePath ?? (await (options.resolveWorkspacePath ?? resolveDefaultWorkspacePath)(options.cwd ?? process.cwd()));
   const input: RunTaskInput = {
     taskId,
     workspacePath,

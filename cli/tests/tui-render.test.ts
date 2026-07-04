@@ -26,7 +26,8 @@ describe("AgentTui render", () => {
     expect(frame).toContain("status idle");
     expect(frame).toContain("model deepseek/deepseek-reasoner");
     expect(frame).toContain("workspace /repo");
-    expect(frame).toContain("commands /model /workspace /exit");
+    expect(frame).toContain("mode manual");
+    expect(frame).toContain("commands /model /workspace /diff /trace /mode /exit");
     expect(frame).toContain("input");
   });
 });

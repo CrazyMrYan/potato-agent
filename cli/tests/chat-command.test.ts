@@ -44,4 +44,23 @@ describe("chat command", () => {
     expect(adapter.stopped).toBe(true);
     expect(write).toHaveBeenCalledWith(expect.stringContaining("进入交互会话"));
   });
+
+  it("resolves workspace root when workspace is not explicitly configured", async () => {
+    const adapter = new FakeSessionAdapter();
+    const read = vi.fn<() => Promise<string>>().mockResolvedValueOnce("/exit");
+    const workspaces: Array<string | undefined> = [];
+
+    await chatCommand({
+      cwd: "/repo/cli",
+      resolveWorkspacePath: async () => "/repo",
+      createSession: (config) => {
+        workspaces.push(config.workspacePath);
+        return new AgentSession(adapter);
+      },
+      read,
+      write: vi.fn()
+    });
+
+    expect(workspaces).toEqual(["/repo"]);
+  });
 });

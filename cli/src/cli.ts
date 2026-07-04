@@ -30,7 +30,7 @@ program
   .option("--provider <provider>", "模型供应商，例如 openai、anthropic")
   .option("--model <model>", "模型名称，例如 gpt-5.5、claude-opus-4-5")
   .option("--api-key <apiKey>", "模型 API Key，也可使用对应环境变量")
-  .option("--workspace <path>", "要验证的项目目录", process.cwd())
+  .option("--workspace <path>", "要验证的项目目录")
   .option("--timeout-ms <ms>", "Pi RPC 等待超时时间", "120000")
   .action(async (prompt: string, options: Record<string, string>) => {
     try {
@@ -39,6 +39,7 @@ program
         model: options.model,
         apiKey: options.apiKey,
         workspacePath: options.workspace,
+        cwd: process.cwd(),
         timeoutMs: Number(options.timeoutMs)
       });
     } catch (error) {
@@ -55,7 +56,7 @@ program
   .option("--provider <provider>", "模型供应商，例如 deepseek")
   .option("--model <model>", "模型名称，例如 deepseek-reasoner")
   .option("--api-key <apiKey>", "模型 API Key，也可使用对应环境变量")
-  .option("--workspace <path>", "要验证的项目目录", process.cwd())
+  .option("--workspace <path>", "要验证的项目目录")
   .option("--timeout-ms <ms>", "Pi RPC 每轮等待超时时间", "120000")
   .action(async (options: Record<string, string>) => {
     try {
@@ -64,6 +65,7 @@ program
         model: options.model,
         apiKey: options.apiKey,
         workspacePath: options.workspace,
+        cwd: process.cwd(),
         timeoutMs: Number(options.timeoutMs)
       });
     } catch (error) {
@@ -75,11 +77,11 @@ program
 program
   .command("diff")
   .description("显示当前工作区的 Git diff")
-  .option("--workspace <path>", "要查看的项目目录", process.cwd())
+  .option("--workspace <path>", "要查看的项目目录")
   .option("--no-patch", "只显示文件列表，不显示 patch")
   .action(async (options: { workspace: string; patch: boolean }) => {
     try {
-      await diffCommand({ workspacePath: options.workspace, patch: options.patch });
+      await diffCommand({ workspacePath: options.workspace, patch: options.patch, cwd: process.cwd() });
     } catch (error) {
       console.error(formatCliError(error));
       process.exitCode = 1;
@@ -90,11 +92,11 @@ program
   .command("trace")
   .description("查看任务 trace")
   .argument("[taskId]", "任务 ID")
-  .option("--workspace <path>", "要查看的项目目录", process.cwd())
+  .option("--workspace <path>", "要查看的项目目录")
   .option("--raw", "输出原始 JSONL 条目")
   .action(async (taskId: string | undefined, options: { workspace: string; raw?: boolean }) => {
     try {
-      await traceCommand({ workspacePath: options.workspace, taskId, raw: options.raw });
+      await traceCommand({ workspacePath: options.workspace, taskId, raw: options.raw, cwd: process.cwd() });
     } catch (error) {
       console.error(formatCliError(error));
       process.exitCode = 1;

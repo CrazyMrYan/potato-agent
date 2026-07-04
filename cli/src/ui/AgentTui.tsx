@@ -1,12 +1,22 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Box, Text, useApp, useInput, useStdout } from "ink";
-import type { AgentConfig, AgentSession } from "@coding-agent/core";
+import {
+  GitDiffService,
+  JsonlTraceStore,
+  type AgentConfig,
+  type AgentPermissionMode,
+  type AgentSession,
+  type DiffService,
+  type TraceStore
+} from "@coding-agent/core";
 import { EventStreamRenderer, type RenderedAgentEvent, type RenderedAgentEventKind } from "./EventStreamRenderer.js";
 
 export type AgentTuiProps = {
   config: AgentConfig;
   createSession?: (config: AgentConfig) => AgentSession;
   saveConfig?: (config: AgentConfig) => Promise<void>;
+  diffService?: DiffService;
+  traceStore?: TraceStore;
 };
 
 type Mode = "chat" | "command" | "model-provider" | "model-model" | "model-key";
@@ -23,6 +33,9 @@ const modelOptions: Record<string, string[]> = {
 const commandOptions = [
   { command: "/model", label: "/model", description: "配置 provider、model 和 API Key" },
   { command: "/workspace", label: "/workspace", description: "显示当前工作区" },
+  { command: "/diff", label: "/diff", description: "显示当前 Git 变更" },
+  { command: "/trace", label: "/trace", description: "显示最近 trace" },
+  { command: "/mode", label: "/mode", description: "切换 manual、auto 或 readonly" },
   { command: "/exit", label: "/exit", description: "退出 TUI" }
 ];
 
@@ -45,6 +58,8 @@ export function AgentTui(props: AgentTuiProps): React.ReactElement {
     { kind: "muted", text: "准备就绪。输入任务开始，输入 / 打开命令菜单。" }
   ]);
   const sessionRef = useRef<AgentSession | undefined>(undefined);
+  const workspacePath = config.workspacePath ?? process.cwd();
+  const permissionMode = config.permissionPolicy?.mode ?? "confirm";
 
   const visibleEventCapacity = Math.max(8, Math.min(24, stdout.stdout.rows - 9));
   const maxScrollOffset = Math.max(events.length - visibleEventCapacity, 0);
@@ -99,6 +114,49 @@ export function AgentTui(props: AgentTuiProps): React.ReactElement {
     appendEvent({ kind: "success", text: `模型已配置：${formatModel(nextConfig)}` });
   }, [appendEvent, config, pendingApiKey, props, selectedModel, selectedProvider]);
 
+  const savePermissionMode = useCallback(
+    async (mode: AgentPermissionMode) => {
+      const nextConfig: AgentConfig = {
+        ...config,
+        permissionPolicy: {
+          ...config.permissionPolicy,
+          mode
+        }
+      };
+      setConfig(nextConfig);
+      await props.saveConfig?.(nextConfig);
+      appendEvent({ kind: "success", text: `权限模式已设置：${formatPermissionMode(mode)}` });
+    },
+    [appendEvent, config, props]
+  );
+
+  const showDiff = useCallback(async () => {
+    const diffService = props.diffService ?? new GitDiffService();
+    const changeSet = await diffService.getChangeSet(workspacePath);
+    if (changeSet.files.length === 0) {
+      appendEvent({ kind: "muted", text: "diff: 当前没有 Git 变更。" });
+      return;
+    }
+    appendEvent({ kind: "diff", text: `diff: ${changeSet.files.length} 个文件变更。` });
+    appendEvents(changeSet.files.map((file) => ({ kind: "diff", text: `${file.status} ${file.path}` })));
+  }, [appendEvent, appendEvents, props.diffService, workspacePath]);
+
+  const showTrace = useCallback(async () => {
+    const traceStore = props.traceStore ?? new JsonlTraceStore(workspacePath);
+    const traces = await traceStore.list();
+    if (traces.length === 0) {
+      appendEvent({ kind: "muted", text: "trace: 还没有执行过 agent 任务。" });
+      return;
+    }
+    appendEvent({ kind: "muted", text: `trace: 最近 ${Math.min(traces.length, 5)} 条。` });
+    appendEvents(
+      traces.slice(0, 5).map((trace) => ({
+        kind: "muted",
+        text: `${trace.taskId} ${trace.entries} entries ${trace.updatedAt}`
+      }))
+    );
+  }, [appendEvent, appendEvents, props.traceStore, workspacePath]);
+
   const sendPrompt = useCallback(
     async (prompt: string) => {
       if (busy) {
@@ -148,7 +206,7 @@ export function AgentTui(props: AgentTuiProps): React.ReactElement {
       }
 
       if (prompt === "/workspace") {
-        appendEvent({ kind: "muted", text: `workspace: ${config.workspacePath ?? process.cwd()}` });
+        appendEvent({ kind: "muted", text: `workspace: ${workspacePath}` });
         return;
       }
 
@@ -157,9 +215,42 @@ export function AgentTui(props: AgentTuiProps): React.ReactElement {
         return;
       }
 
+      if (prompt === "/diff") {
+        await showDiff();
+        return;
+      }
+
+      if (prompt === "/trace") {
+        await showTrace();
+        return;
+      }
+
+      if (prompt === "/mode") {
+        appendEvent({ kind: "muted", text: "mode: 使用 /mode manual、/mode auto 或 /mode readonly。" });
+        return;
+      }
+
+      if (prompt.startsWith("/mode ")) {
+        const mode = prompt.slice("/mode ".length).trim();
+        if (mode === "manual") {
+          await savePermissionMode("confirm");
+          return;
+        }
+        if (mode === "auto") {
+          await savePermissionMode("bypass");
+          return;
+        }
+        if (mode === "readonly") {
+          await savePermissionMode("readonly");
+          return;
+        }
+        appendEvent({ kind: "warning", text: "mode: 只支持 manual、auto、readonly。" });
+        return;
+      }
+
       await sendPrompt(prompt);
     },
-    [app, appendEvent, config.workspacePath, enterModelProviderMode, sendPrompt]
+    [app, appendEvent, enterModelProviderMode, savePermissionMode, sendPrompt, showDiff, showTrace, workspacePath]
   );
 
   useEffect(() => {
@@ -176,7 +267,7 @@ export function AgentTui(props: AgentTuiProps): React.ReactElement {
     }
 
     if (key.ctrl && input === "w") {
-      appendEvent({ kind: "muted", text: `workspace: ${config.workspacePath ?? process.cwd()}` });
+      appendEvent({ kind: "muted", text: `workspace: ${workspacePath}` });
       return;
     }
 
@@ -255,10 +346,11 @@ export function AgentTui(props: AgentTuiProps): React.ReactElement {
         </Box>
         <Box gap={2} flexWrap="wrap">
           <Text dimColor>model <Text color="white">{formatModel(config)}</Text></Text>
-          <Text dimColor>workspace <Text color="white">{config.workspacePath ?? process.cwd()}</Text></Text>
+          <Text dimColor>workspace <Text color="white">{workspacePath}</Text></Text>
+          <Text dimColor>mode <Text color="white">{formatPermissionMode(permissionMode)}</Text></Text>
         </Box>
         <Box gap={2} flexWrap="wrap">
-          <Text dimColor>commands <Text color="white">/model /workspace /exit</Text></Text>
+          <Text dimColor>commands <Text color="white">/model /workspace /diff /trace /mode /exit</Text></Text>
           <Text dimColor>keys <Text color="white">Ctrl+M PageUp/PageDown Ctrl+C</Text></Text>
         </Box>
       </Box>
@@ -497,6 +589,16 @@ function inputLabel(mode: Mode): string {
 
 function formatModel(config: AgentConfig): string {
   return `${config.provider ?? "未配置"}/${config.model ?? "未配置"}`;
+}
+
+function formatPermissionMode(mode: AgentPermissionMode): string {
+  if (mode === "confirm") {
+    return "manual";
+  }
+  if (mode === "bypass") {
+    return "auto";
+  }
+  return "readonly";
 }
 
 function wrap(value: number, length: number): number {

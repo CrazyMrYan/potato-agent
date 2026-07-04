@@ -106,6 +106,39 @@ describe("run command model configuration", () => {
     expect(seen[0]?.workspacePath).toBe("/tmp/example");
   });
 
+  it("resolves workspace root when workspace is not explicitly configured", async () => {
+    const seen = [];
+    const adapter: PiAdapter = {
+      async *run(input) {
+        seen.push(input);
+        yield { type: "task.finished", taskId: input.taskId, summary: "done" };
+      }
+    };
+
+    await runCommand("解释项目", {
+      cwd: "/repo/cli",
+      resolveWorkspacePath: async () => "/repo",
+      createAdapter: () => adapter,
+      createTraceStore: () => ({
+        async append() {},
+        async read() {
+          return [];
+        },
+        async list() {
+          return [];
+        }
+      }),
+      createDiffService: () => ({
+        async getChangeSet() {
+          return { files: [] };
+        }
+      }),
+      write: vi.fn()
+    });
+
+    expect(seen[0]?.workspacePath).toBe("/repo");
+  });
+
   it("fails the command when the agent emits task.failed", async () => {
     const adapter: PiAdapter = {
       async *run(input) {

@@ -1,15 +1,17 @@
 import { input } from "@inquirer/prompts";
-import { AgentSessionFactory, type AgentConfig, type AgentSession } from "@coding-agent/core";
+import { AgentSessionFactory, resolveDefaultWorkspacePath, type AgentConfig, type AgentSession } from "@coding-agent/core";
 import { EventStreamRenderer } from "../ui/EventStreamRenderer.js";
 
 export type ChatCommandOptions = AgentConfig & {
+  cwd?: string;
   createSession?: (options: AgentConfig) => AgentSession;
+  resolveWorkspacePath?: (cwd: string) => Promise<string>;
   read?: () => Promise<string>;
   write?: (line: string) => void;
 };
 
 export async function chatCommand(options: ChatCommandOptions = {}): Promise<void> {
-  const workspacePath = options.workspacePath ?? process.cwd();
+  const workspacePath = options.workspacePath ?? (await (options.resolveWorkspacePath ?? resolveDefaultWorkspacePath)(options.cwd ?? process.cwd()));
   const session = options.createSession
     ? options.createSession({ ...options, workspacePath })
     : new AgentSessionFactory().create({ ...options, workspacePath });

@@ -22,6 +22,9 @@
 - M4.6 已按最新决策把 TUI 技术栈从 `@vue-tui/runtime` 切换为 Ink v7，其余核心架构不变。
 - M4.5 已把系统提示词、追加系统提示词、skills、MCP server 描述、工具 allow/deny 和权限策略纳入 `core/` 的 `AgentConfig`。
 - 当前 Pi RPC 路径可通过 Pi CLI 参数真实传入 `systemPrompt`、`appendSystemPrompt`、`skills` 和工具 allow/deny。
+- Trace 是默认自动开启的任务审计记录，用于复盘、调试、回放和问题定位；`run`、`chat` 和 TUI session 都应写入 `.coding-agent/traces/`。
+- Diff 是当前 Git 工作区变更视图，用于让用户看到 agent 或人工操作造成的文件变化；TUI 和 CLI 都应能随时查看。
+- TUI 已提供 `/diff`、`/trace` 和 `/mode manual|auto|readonly` 入口，权限模式保存到 workspace 配置。
 - MCP server 配置和真正的工具二次确认策略已经有 core 模型，但还没有在 Pi RPC 形态下完全生效；后续需要切到 Pi SDK session 或本项目 runtime 来接管工具边界。
 - CLI/TUI 不再给模型输出增加“步骤：”“推理：”“工具开始：”这类固定前缀，模型最终输出按原文展示。
 - TUI 已移除右侧伪滚动条；当前保留 PageUp/PageDown 历史翻页和终端原生滚动，真实滚轮/滚动条需要更完整 TUI 能力或 runtime 支持。
@@ -90,6 +93,7 @@ docs: record validation result
 5. 落地独立可测试的 `ToolBoundary`。
 6. 当前 RPC 路径只能透传 system prompt、skills 和工具 allow/deny，不能声明 core 已接管最终工具权限。
 7. 后续只有 SDK/runtime adapter 能在工具执行前调用 `ToolBoundary` 时，才能声明权限由本项目接管。
+8. 写入前展示 patch 并要求确认属于 SDK/runtime 工具接管能力，不属于当前 RPC 路径已完成能力。
 
 ### M4.5：TUI 输出修正和 core 运行配置模型
 
