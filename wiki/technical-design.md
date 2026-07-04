@@ -145,6 +145,8 @@ interface AgentGateway {
 
 这层是我们在 Pi 之上“套能力”的主要位置。Pi 可以替换，CLI 可以替换，但这层沉淀的是项目自己的产品模型和工程策略。
 
+M5.2 开始，任务生命周期的执行细节下沉到 `AgentLoop`。`AgentOrchestrator` 负责选择策略、配置和 SubAgent，`AgentLoop` 负责稳定执行：task start/finish/fail、trace、diff、runtime capability 和后续权限接管点。
+
 ### PiRpcAdapter
 
 `PiRpcAdapter` 是第一版实际 Pi 适配器。它通过 Pi SDK 的 `RpcClient` 启动 Pi RPC 子进程，并把 Pi 的事件、工具调用和结果转换成 `AgentEvent`。
@@ -231,6 +233,10 @@ bash、edit、write 默认需要确认。
 ```
 
 这套配置的最终执行点应该在 `AgentOrchestrator -> Tool Boundary`。当前 RPC 验证阶段只能把 Pi CLI 已支持的字段透传给 Pi，不能把 MCP 和二次确认策略误认为已经完整落地。
+
+Skills 由 `SkillManager` 管理。内置 skills 默认出现在 TUI `/skill` 列表中，用户可启用/禁用；外部 skills 可从本地路径或 Git 仓库安装到 workspace 配置。只有 `enabled !== false` 的 skill 会注入 Pi RPC 参数。
+
+MCP server 配置由 `McpConfigChecker` 做静态和启动检测。当前 Pi RPC adapter 不支持真实 MCP 注入时，检测结果必须明确返回 `adapter-unsupported`。
 
 ### RuntimePiAdapter
 

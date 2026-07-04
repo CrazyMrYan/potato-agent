@@ -3,10 +3,15 @@ import { Box, Text, useApp, useInput, useStdout } from "ink";
 import {
   GitDiffService,
   JsonlTraceStore,
+  McpConfigChecker,
+  SkillManager,
   type AgentConfig,
+  type AgentMcpServerConfig,
   type AgentPermissionMode,
+  type AgentSkillConfig,
   type AgentSession,
   type DiffService,
+  type McpCheckResult,
   type TraceStore
 } from "@coding-agent/core";
 import { EventStreamRenderer, type RenderedAgentEvent, type RenderedAgentEventKind } from "./EventStreamRenderer.js";
@@ -17,9 +22,21 @@ export type AgentTuiProps = {
   saveConfig?: (config: AgentConfig) => Promise<void>;
   diffService?: DiffService;
   traceStore?: TraceStore;
+  skillManager?: SkillManager;
+  mcpChecker?: McpConfigChecker;
 };
 
-type Mode = "chat" | "command" | "model-provider" | "model-model" | "model-key";
+type Mode =
+  | "chat"
+  | "command"
+  | "model-provider"
+  | "model-model"
+  | "model-key"
+  | "permission-mode"
+  | "skill-list"
+  | "skill-install"
+  | "mcp-menu"
+  | "agent-menu";
 
 const providerOptions = ["deepseek", "openai", "anthropic", "gemini", "mistral"] as const;
 const modelOptions: Record<string, string[]> = {
@@ -35,8 +52,17 @@ const commandOptions = [
   { command: "/workspace", label: "/workspace", description: "显示当前工作区" },
   { command: "/diff", label: "/diff", description: "显示当前 Git 变更" },
   { command: "/trace", label: "/trace", description: "显示最近 trace" },
-  { command: "/mode", label: "/mode", description: "切换 manual、auto 或 readonly" },
+  { command: "/mode", label: "/mode", description: "打开权限模式选择" },
+  { command: "/skill", label: "/skill", description: "管理 skills" },
+  { command: "/mcp", label: "/mcp", description: "检测 MCP 配置" },
+  { command: "/agent", label: "/agent", description: "选择 SubAgent" },
   { command: "/exit", label: "/exit", description: "退出 TUI" }
+];
+
+const permissionOptions: Array<{ label: string; mode: AgentPermissionMode }> = [
+  { label: "manual", mode: "confirm" },
+  { label: "auto", mode: "bypass" },
+  { label: "readonly", mode: "readonly" }
 ];
 
 export function AgentTui(props: AgentTuiProps): React.ReactElement {
@@ -53,6 +79,11 @@ export function AgentTui(props: AgentTuiProps): React.ReactElement {
     return index >= 0 ? index : 0;
   });
   const [selectedModel, setSelectedModel] = useState(0);
+  const [selectedPermission, setSelectedPermission] = useState(0);
+  const [selectedSkill, setSelectedSkill] = useState(0);
+  const [skillInstallInput, setSkillInstallInput] = useState("");
+  const [skillItems, setSkillItems] = useState<AgentSkillConfig[]>([]);
+  const [mcpResults, setMcpResults] = useState<McpCheckResult[]>([]);
   const [pendingApiKey, setPendingApiKey] = useState(props.config.apiKey ?? "");
   const [events, setEvents] = useState<RenderedAgentEvent[]>([
     { kind: "muted", text: "准备就绪。输入任务开始，输入 / 打开命令菜单。" }
@@ -60,6 +91,8 @@ export function AgentTui(props: AgentTuiProps): React.ReactElement {
   const sessionRef = useRef<AgentSession | undefined>(undefined);
   const workspacePath = config.workspacePath ?? process.cwd();
   const permissionMode = config.permissionPolicy?.mode ?? "confirm";
+  const skillManager = props.skillManager ?? new SkillManager(workspacePath);
+  const mcpChecker = props.mcpChecker ?? new McpConfigChecker({ adapter: "rpc" });
 
   const visibleEventCapacity = Math.max(8, Math.min(24, stdout.stdout.rows - 9));
   const maxScrollOffset = Math.max(events.length - visibleEventCapacity, 0);
@@ -129,6 +162,49 @@ export function AgentTui(props: AgentTuiProps): React.ReactElement {
     },
     [appendEvent, config, props]
   );
+
+  const openPermissionMode = useCallback(() => {
+    const index = permissionOptions.findIndex((option) => option.mode === permissionMode);
+    setSelectedPermission(index >= 0 ? index : 0);
+    setMode("permission-mode");
+  }, [permissionMode]);
+
+  const openSkillList = useCallback(async () => {
+    const skills = await skillManager.list();
+    setSkillItems(skills);
+    setSelectedSkill(0);
+    setMode("skill-list");
+  }, [skillManager]);
+
+  const toggleSelectedSkill = useCallback(async () => {
+    const skill = skillItems[selectedSkill];
+    if (!skill?.id) {
+      return;
+    }
+    await skillManager.setEnabled(skill.id, skill.enabled === false);
+    await openSkillList();
+  }, [openSkillList, selectedSkill, skillItems, skillManager]);
+
+  const installSkill = useCallback(async () => {
+    const source = skillInstallInput.trim();
+    if (!source) {
+      return;
+    }
+    const installed = await skillManager.install(source);
+    setSkillInstallInput("");
+    appendEvent({ kind: "success", text: `skill installed: ${installed.name ?? installed.id}` });
+    await openSkillList();
+  }, [appendEvent, openSkillList, skillInstallInput, skillManager]);
+
+  const openMcpMenu = useCallback(async () => {
+    const servers = config.mcpServers ?? [];
+    const results: McpCheckResult[] = [];
+    for (const server of servers) {
+      results.push(await mcpChecker.check(server));
+    }
+    setMcpResults(results);
+    setMode("mcp-menu");
+  }, [config.mcpServers, mcpChecker]);
 
   const showDiff = useCallback(async () => {
     const diffService = props.diffService ?? new GitDiffService();
@@ -215,6 +291,26 @@ export function AgentTui(props: AgentTuiProps): React.ReactElement {
         return;
       }
 
+      if (prompt === "/mode") {
+        openPermissionMode();
+        return;
+      }
+
+      if (prompt === "/skill") {
+        await openSkillList();
+        return;
+      }
+
+      if (prompt === "/mcp") {
+        await openMcpMenu();
+        return;
+      }
+
+      if (prompt === "/agent" || prompt === "/subagent") {
+        setMode("agent-menu");
+        return;
+      }
+
       if (prompt === "/diff") {
         await showDiff();
         return;
@@ -225,32 +321,9 @@ export function AgentTui(props: AgentTuiProps): React.ReactElement {
         return;
       }
 
-      if (prompt === "/mode") {
-        appendEvent({ kind: "muted", text: "mode: 使用 /mode manual、/mode auto 或 /mode readonly。" });
-        return;
-      }
-
-      if (prompt.startsWith("/mode ")) {
-        const mode = prompt.slice("/mode ".length).trim();
-        if (mode === "manual") {
-          await savePermissionMode("confirm");
-          return;
-        }
-        if (mode === "auto") {
-          await savePermissionMode("bypass");
-          return;
-        }
-        if (mode === "readonly") {
-          await savePermissionMode("readonly");
-          return;
-        }
-        appendEvent({ kind: "warning", text: "mode: 只支持 manual、auto、readonly。" });
-        return;
-      }
-
       await sendPrompt(prompt);
     },
-    [app, appendEvent, enterModelProviderMode, savePermissionMode, sendPrompt, showDiff, showTrace, workspacePath]
+    [app, appendEvent, enterModelProviderMode, openMcpMenu, openPermissionMode, openSkillList, sendPrompt, showDiff, showTrace, workspacePath]
   );
 
   useEffect(() => {
@@ -303,7 +376,27 @@ export function AgentTui(props: AgentTuiProps): React.ReactElement {
     }
 
     if (mode !== "chat") {
-      handleModelInput(input, key, mode, selectedProvider, setMode, setSelectedProvider, setSelectedModel, setPendingApiKey, saveModelConfig);
+      handleSecondaryInput({
+        input,
+        key,
+        mode,
+        selectedProvider,
+        selectedPermission,
+        selectedSkill,
+        skillItems,
+        setMode,
+        setSelectedProvider,
+        setSelectedModel,
+        setPendingApiKey,
+        setSelectedPermission,
+        setSelectedSkill,
+        setSkillInstallInput,
+        saveModelConfig,
+        savePermissionMode,
+        toggleSelectedSkill,
+        installSkill,
+        openSkillList
+      });
       return;
     }
 
@@ -350,7 +443,7 @@ export function AgentTui(props: AgentTuiProps): React.ReactElement {
           <Text dimColor>mode <Text color="white">{formatPermissionMode(permissionMode)}</Text></Text>
         </Box>
         <Box gap={2} flexWrap="wrap">
-          <Text dimColor>commands <Text color="white">/model /workspace /diff /trace /mode /exit</Text></Text>
+          <Text dimColor>commands <Text color="white">/model /workspace /diff /trace /mode /skill /mcp /agent /exit</Text></Text>
           <Text dimColor>keys <Text color="white">Ctrl+M PageUp/PageDown Ctrl+C</Text></Text>
         </Box>
       </Box>
@@ -366,12 +459,16 @@ export function AgentTui(props: AgentTuiProps): React.ReactElement {
         ))}
         <CommandMenu mode={mode} selectedCommand={selectedCommand} />
         <ModelPicker mode={mode} selectedProvider={selectedProvider} selectedModel={selectedModel} pendingApiKey={pendingApiKey} />
+        <PermissionPicker mode={mode} selectedPermission={selectedPermission} />
+        <SkillList mode={mode} skills={skillItems} selectedSkill={selectedSkill} skillInstallInput={skillInstallInput} />
+        <McpMenu mode={mode} servers={config.mcpServers ?? []} results={mcpResults} />
+        <AgentMenu mode={mode} />
       </Box>
 
       <Box marginTop={1} borderStyle="single" borderColor={mode === "chat" ? "gray" : "cyan"} paddingX={1}>
         <Text color="cyan">input </Text>
         <Text color={mode === "chat" || mode === "command" ? "white" : "cyan"}>
-          {inputLabel(mode)} {mode === "chat" || mode === "command" ? draft : modelPrompt(mode)}
+          {inputLabel(mode)} {mode === "chat" || mode === "command" ? draft : secondaryPrompt(mode, skillInstallInput)}
         </Text>
       </Box>
     </Box>
@@ -422,17 +519,51 @@ function handleCommandInput(
   }
 }
 
-function handleModelInput(
-  input: string,
-  key: { upArrow: boolean; downArrow: boolean; return: boolean; escape: boolean; backspace: boolean; delete: boolean },
-  mode: Mode,
-  selectedProvider: number,
-  setMode: React.Dispatch<React.SetStateAction<Mode>>,
-  setSelectedProvider: React.Dispatch<React.SetStateAction<number>>,
-  setSelectedModel: React.Dispatch<React.SetStateAction<number>>,
-  setPendingApiKey: React.Dispatch<React.SetStateAction<string>>,
-  saveModelConfig: () => Promise<void>
-): void {
+type SecondaryInputOptions = {
+  input: string;
+  key: { upArrow: boolean; downArrow: boolean; return: boolean; escape: boolean; backspace: boolean; delete: boolean };
+  mode: Mode;
+  selectedProvider: number;
+  selectedPermission: number;
+  selectedSkill: number;
+  skillItems: AgentSkillConfig[];
+  setMode: React.Dispatch<React.SetStateAction<Mode>>;
+  setSelectedProvider: React.Dispatch<React.SetStateAction<number>>;
+  setSelectedModel: React.Dispatch<React.SetStateAction<number>>;
+  setPendingApiKey: React.Dispatch<React.SetStateAction<string>>;
+  setSelectedPermission: React.Dispatch<React.SetStateAction<number>>;
+  setSelectedSkill: React.Dispatch<React.SetStateAction<number>>;
+  setSkillInstallInput: React.Dispatch<React.SetStateAction<string>>;
+  saveModelConfig: () => Promise<void>;
+  savePermissionMode: (mode: AgentPermissionMode) => Promise<void>;
+  toggleSelectedSkill: () => Promise<void>;
+  installSkill: () => Promise<void>;
+  openSkillList: () => Promise<void>;
+};
+
+function handleSecondaryInput(options: SecondaryInputOptions): void {
+  const {
+    input,
+    key,
+    mode,
+    selectedProvider,
+    selectedPermission,
+    selectedSkill,
+    skillItems,
+    setMode,
+    setSelectedProvider,
+    setSelectedModel,
+    setPendingApiKey,
+    setSelectedPermission,
+    setSelectedSkill,
+    setSkillInstallInput,
+    saveModelConfig,
+    savePermissionMode,
+    toggleSelectedSkill,
+    installSkill,
+    openSkillList
+  } = options;
+
   if (key.escape) {
     setMode("chat");
     return;
@@ -484,6 +615,67 @@ function handleModelInput(
       setPendingApiKey((value) => value + input);
     }
   }
+
+  if (mode === "permission-mode") {
+    if (key.upArrow) {
+      setSelectedPermission((value) => wrap(value - 1, permissionOptions.length));
+      return;
+    }
+    if (key.downArrow) {
+      setSelectedPermission((value) => wrap(value + 1, permissionOptions.length));
+      return;
+    }
+    if (key.return) {
+      void savePermissionMode(permissionOptions[selectedPermission].mode);
+      setMode("chat");
+    }
+    return;
+  }
+
+  if (mode === "skill-list") {
+    if (input === "i") {
+      setSkillInstallInput("");
+      setMode("skill-install");
+      return;
+    }
+    if (input === "r") {
+      void openSkillList();
+      return;
+    }
+    if (key.upArrow) {
+      setSelectedSkill((value) => wrap(value - 1, Math.max(skillItems.length, 1)));
+      return;
+    }
+    if (key.downArrow) {
+      setSelectedSkill((value) => wrap(value + 1, Math.max(skillItems.length, 1)));
+      return;
+    }
+    if (key.return) {
+      void toggleSelectedSkill();
+    }
+    return;
+  }
+
+  if (mode === "skill-install") {
+    if (key.backspace || key.delete) {
+      setSkillInstallInput((value) => value.slice(0, -1));
+      return;
+    }
+    if (key.return) {
+      void installSkill();
+      return;
+    }
+    if (input) {
+      setSkillInstallInput((value) => value + input);
+    }
+    return;
+  }
+
+  if (mode === "mcp-menu" || mode === "agent-menu") {
+    if (key.return) {
+      setMode("chat");
+    }
+  }
 }
 
 function EventLine({ event }: { event: RenderedAgentEvent }): React.ReactElement {
@@ -518,7 +710,7 @@ function ModelPicker({
   selectedModel: number;
   pendingApiKey: string;
 }): React.ReactElement | null {
-  if (mode === "chat" || mode === "command") {
+  if (mode !== "model-provider" && mode !== "model-model" && mode !== "model-key") {
     return null;
   }
 
@@ -551,6 +743,88 @@ function ModelPicker({
   return <Text dimColor>API Key: {pendingApiKey ? "*".repeat(Math.min(pendingApiKey.length, 12)) : "(使用环境变量)"}</Text>;
 }
 
+function PermissionPicker({ mode, selectedPermission }: { mode: Mode; selectedPermission: number }): React.ReactElement | null {
+  if (mode !== "permission-mode") {
+    return null;
+  }
+
+  return (
+    <>
+      <Text dimColor>MODE</Text>
+      {permissionOptions.map((option, index) => (
+        <Text color={index === selectedPermission ? "green" : undefined} key={option.label}>
+          {index === selectedPermission ? ">" : " "} {option.label}
+        </Text>
+      ))}
+    </>
+  );
+}
+
+function SkillList({
+  mode,
+  skills,
+  selectedSkill,
+  skillInstallInput
+}: {
+  mode: Mode;
+  skills: AgentSkillConfig[];
+  selectedSkill: number;
+  skillInstallInput: string;
+}): React.ReactElement | null {
+  if (mode === "skill-install") {
+    return <Text dimColor>Install skill from Git URL or local path: {skillInstallInput}</Text>;
+  }
+  if (mode !== "skill-list") {
+    return null;
+  }
+
+  return (
+    <>
+      <Text dimColor>SKILLS  Enter toggle · i install · r refresh · Esc back</Text>
+      {skills.map((skill, index) => (
+        <Text color={index === selectedSkill ? "green" : undefined} key={skill.id ?? skill.path}>
+          {index === selectedSkill ? ">" : " "} [{skill.enabled === false ? "disabled" : "enabled"}] {skill.source ?? "local"} {skill.name ?? skill.id ?? skill.path}
+        </Text>
+      ))}
+    </>
+  );
+}
+
+function McpMenu({
+  mode,
+  servers,
+  results
+}: {
+  mode: Mode;
+  servers: AgentMcpServerConfig[];
+  results: McpCheckResult[];
+}): React.ReactElement | null {
+  if (mode !== "mcp-menu") {
+    return null;
+  }
+
+  if (servers.length === 0) {
+    return <Text dimColor>MCP: no servers configured. Press Enter or Esc to return.</Text>;
+  }
+
+  return (
+    <>
+      <Text dimColor>MCP CHECK</Text>
+      {results.map((result) => (
+        <Text key={result.name}>{result.name} {result.status} {result.message}</Text>
+      ))}
+    </>
+  );
+}
+
+function AgentMenu({ mode }: { mode: Mode }): React.ReactElement | null {
+  if (mode !== "agent-menu") {
+    return null;
+  }
+
+  return <Text dimColor>SubAgent: default agent selected. Custom SubAgent selection will use core SubAgentConfig.</Text>;
+}
+
 function eventTextStyle(kind: RenderedAgentEventKind): { color?: string; dimColor?: boolean; bold?: boolean } {
   const styles: Record<RenderedAgentEventKind, { color?: string; dimColor?: boolean; bold?: boolean }> = {
     user: { color: "cyan", bold: true },
@@ -567,14 +841,32 @@ function eventTextStyle(kind: RenderedAgentEventKind): { color?: string; dimColo
   return styles[kind];
 }
 
-function modelPrompt(mode: Mode): string {
+function secondaryPrompt(mode: Mode, skillInstallInput: string): string {
   if (mode === "model-provider") {
     return "选择 provider";
   }
   if (mode === "model-model") {
     return "选择 model";
   }
-  return "输入 API Key";
+  if (mode === "model-key") {
+    return "输入 API Key";
+  }
+  if (mode === "permission-mode") {
+    return "选择权限模式";
+  }
+  if (mode === "skill-list") {
+    return "skills";
+  }
+  if (mode === "skill-install") {
+    return skillInstallInput || "输入 Git URL 或本地路径";
+  }
+  if (mode === "mcp-menu") {
+    return "mcp";
+  }
+  if (mode === "agent-menu") {
+    return "agent";
+  }
+  return "";
 }
 
 function inputLabel(mode: Mode): string {

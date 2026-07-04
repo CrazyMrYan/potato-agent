@@ -13,7 +13,7 @@ describe("Agent runtime config", () => {
         provider: "deepseek",
         model: "deepseek-chat",
         systemPrompt: "你是一个谨慎的编码智能体。",
-        skills: [{ path: "/repo/.coding-agent/skills/review" }],
+        skills: [{ id: "review", name: "review", path: "/repo/.coding-agent/skills/review", source: "local", enabled: true }],
         mcpServers: [{ name: "filesystem", command: "npx", args: ["@modelcontextprotocol/server-filesystem", "/repo"] }],
         permissionPolicy: {
           mode: "confirm",
@@ -35,7 +35,7 @@ describe("Agent runtime config", () => {
       provider: "deepseek",
       model: "deepseek-reasoner",
       systemPrompt: "你是一个谨慎的编码智能体。",
-      skills: [{ path: "/repo/.coding-agent/skills/review" }],
+      skills: [{ id: "review", name: "review", path: "/repo/.coding-agent/skills/review", source: "local", enabled: true }],
       mcpServers: [{ name: "filesystem", command: "npx", args: ["@modelcontextprotocol/server-filesystem", "/repo"] }],
       permissionPolicy: {
         mode: "bypass",
@@ -60,7 +60,10 @@ describe("Agent runtime config", () => {
       buildPiRpcArgs({
         systemPrompt: "系统提示词",
         appendSystemPrompt: ["追加规则"],
-        skills: [{ path: "/repo/.coding-agent/skills/review" }],
+        skills: [
+          { id: "review", name: "review", path: "/repo/.coding-agent/skills/review", source: "local", enabled: true },
+          { id: "disabled", name: "disabled", path: "/repo/.coding-agent/skills/disabled", source: "local", enabled: false }
+        ],
         tools: { allow: ["read", "grep"], deny: ["bash"] }
       })
     ).toEqual([

@@ -25,6 +25,10 @@
 - Trace 是默认自动开启的任务审计记录，用于复盘、调试、回放和问题定位；`run`、`chat` 和 TUI session 都应写入 `.coding-agent/traces/`。
 - Diff 是当前 Git 工作区变更视图，用于让用户看到 agent 或人工操作造成的文件变化；TUI 和 CLI 都应能随时查看。
 - TUI 已提供 `/diff`、`/trace` 和 `/mode manual|auto|readonly` 入口，权限模式保存到 workspace 配置。
+- TUI 开始补齐核心配置入口：`/mode` 进入二级选择器，`/skill` 进入可操作列表，`/mcp` 检测配置，`/agent` 展示 SubAgent 入口。
+- Core 已新增 `AgentLoop`，用于统一任务生命周期、trace、diff 和 runtime capability 记录。
+- Core 已新增 `SkillManager` 和内置 skills registry，支持内置 skill 开关、本地 skill 安装、Git 仓库 skill 安装。
+- Core 已新增 `McpConfigChecker`，用于检测 MCP command、env、startup 和当前 adapter 支持状态。
 - MCP server 配置和真正的工具二次确认策略已经有 core 模型，但还没有在 Pi RPC 形态下完全生效；后续需要切到 Pi SDK session 或本项目 runtime 来接管工具边界。
 - CLI/TUI 不再给模型输出增加“步骤：”“推理：”“工具开始：”这类固定前缀，模型最终输出按原文展示。
 - TUI 已移除右侧伪滚动条；当前保留 PageUp/PageDown 历史翻页和终端原生滚动，真实滚轮/滚动条需要更完整 TUI 能力或 runtime 支持。
@@ -94,6 +98,7 @@ docs: record validation result
 6. 当前 RPC 路径只能透传 system prompt、skills 和工具 allow/deny，不能声明 core 已接管最终工具权限。
 7. 后续只有 SDK/runtime adapter 能在工具执行前调用 `ToolBoundary` 时，才能声明权限由本项目接管。
 8. 写入前展示 patch 并要求确认属于 SDK/runtime 工具接管能力，不属于当前 RPC 路径已完成能力。
+9. 后续需要把 SDK/runtime adapter 接入 `AgentLoop`，让 MCP 和工具权限从“配置检测”进入“真实执行”。
 
 ### M4.5：TUI 输出修正和 core 运行配置模型
 

@@ -27,7 +27,33 @@ describe("AgentTui render", () => {
     expect(frame).toContain("model deepseek/deepseek-reasoner");
     expect(frame).toContain("workspace /repo");
     expect(frame).toContain("mode manual");
-    expect(frame).toContain("commands /model /workspace /diff /trace /mode /exit");
+    expect(frame).toContain("commands /model /workspace /diff /trace /mode /skill /mcp /agent /exit");
     expect(frame).toContain("input");
+  });
+
+  it("renders mode, skill, mcp, and agent command entries", async () => {
+    const rendered = render(
+      React.createElement(AgentTui, {
+        config: {
+          workspacePath: "/repo",
+          provider: "deepseek",
+          model: "deepseek-reasoner"
+        },
+        skillManager: {
+          async list() {
+            return [{ id: "systematic-debugging", name: "systematic-debugging", path: "builtin:systematic-debugging", source: "builtin", enabled: true }];
+          },
+          async install() {
+            throw new Error("not used");
+          },
+          async setEnabled() {}
+        }
+      })
+    );
+
+    expect(rendered.lastFrame()).toContain("/mode");
+    expect(rendered.lastFrame()).toContain("/skill");
+    expect(rendered.lastFrame()).toContain("/mcp");
+    expect(rendered.lastFrame()).toContain("/agent");
   });
 });

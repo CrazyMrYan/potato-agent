@@ -16,7 +16,12 @@ export type ResolvedAgentConfig = Required<Pick<AgentConfig, "provider" | "model
   Pick<AgentConfig, "timeoutMs">;
 
 export type AgentSkillConfig = {
+  id?: string;
+  name?: string;
   path: string;
+  source?: "builtin" | "local" | "git";
+  enabled?: boolean;
+  repoUrl?: string;
 };
 
 export type AgentMcpServerConfig = {
@@ -74,7 +79,7 @@ export function buildPiRpcArgs(config: AgentConfig): string[] {
     pushValue(args, "--append-system-prompt", prompt);
   }
 
-  for (const skill of config.skills ?? []) {
+  for (const skill of (config.skills ?? []).filter((skill) => skill.enabled !== false)) {
     pushValue(args, "--skill", skill.path);
   }
 
