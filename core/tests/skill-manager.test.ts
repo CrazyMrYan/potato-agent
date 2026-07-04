@@ -18,6 +18,41 @@ describe("SkillManager", () => {
       expect(skills.find((skill) => skill.id === "systematic-debugging")?.enabled).toBe(true);
       expect(skills.find((skill) => skill.id === "verification-before-completion")?.enabled).toBe(true);
       expect(skills.find((skill) => skill.id === "skill-creator")?.enabled).toBe(false);
+      expect(skills.find((skill) => skill.id === "systematic-debugging")?.path).toMatch(/systematic-debugging$/);
+    } finally {
+      await rm(workspace, { recursive: true, force: true });
+    }
+  });
+
+  it("materializes built-in skills as readable SKILL.md directories", async () => {
+    const workspace = await mkdtemp(join(tmpdir(), "coding-agent-builtin-skill-"));
+    try {
+      const manager = new SkillManager(workspace, new MemoryConfigStore({}));
+      const skills = await manager.list();
+      const skill = skills.find((item) => item.id === "systematic-debugging");
+
+      expect(skill?.source).toBe("builtin");
+      expect(skill?.path).not.toMatch(/^builtin:/);
+      await expect(readFile(join(skill?.path ?? "", "SKILL.md"), "utf8")).resolves.toContain("name: systematic-debugging");
+    } finally {
+      await rm(workspace, { recursive: true, force: true });
+    }
+  });
+
+  it("repairs older builtin placeholder paths when listing skills", async () => {
+    const workspace = await mkdtemp(join(tmpdir(), "coding-agent-repair-builtin-skill-"));
+    try {
+      const manager = new SkillManager(
+        workspace,
+        new MemoryConfigStore({
+          skills: [{ id: "systematic-debugging", name: "systematic-debugging", path: "builtin:systematic-debugging", source: "builtin", enabled: false }]
+        })
+      );
+      const skills = await manager.list();
+      const skill = skills.find((item) => item.id === "systematic-debugging");
+
+      expect(skill?.enabled).toBe(false);
+      expect(skill?.path).toBe(join(workspace, ".coding-agent", "builtin-skills", "systematic-debugging"));
     } finally {
       await rm(workspace, { recursive: true, force: true });
     }
@@ -65,13 +100,17 @@ describe("SkillManager", () => {
   });
 
   it("toggles enabled state without deleting the skill", async () => {
+    const workspace = await mkdtemp(join(tmpdir(), "coding-agent-toggle-skill-"));
     const store = new MemoryConfigStore({
       skills: [{ id: "review", name: "review", path: "/skills/review", source: "local", enabled: true }]
     });
+    try {
+      await new SkillManager(workspace, store).setEnabled("review", false);
 
-    await new SkillManager("/repo", store).setEnabled("review", false);
-
-    expect(store.saved?.skills).toContainEqual({ id: "review", name: "review", path: "/skills/review", source: "local", enabled: false });
+      expect(store.saved?.skills).toContainEqual({ id: "review", name: "review", path: "/skills/review", source: "local", enabled: false });
+    } finally {
+      await rm(workspace, { recursive: true, force: true });
+    }
   });
 
   it("rejects invalid local skills without SKILL.md", async () => {

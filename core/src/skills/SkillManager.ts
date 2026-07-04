@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdir, readFile, stat } from "node:fs/promises";
+import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
 import { promisify } from "node:util";
 import type { AgentConfig, AgentSkillConfig } from "../config/AgentConfig.js";
@@ -18,6 +18,17 @@ export const DEFAULT_BUILTIN_SKILLS: Required<Pick<AgentSkillConfig, "id" | "nam
   builtin("receiving-code-review", false)
 ];
 
+const BUILTIN_SKILL_DESCRIPTIONS: Record<string, string> = {
+  "skill-creator": "Create or improve agent skills with a clear trigger, workflow, and verification notes.",
+  "skill-installer": "Install external skills from trusted local paths or Git repositories and verify SKILL.md before enabling.",
+  superpowers: "Use disciplined workflows such as planning, debugging, review, and verification when a task calls for them.",
+  "systematic-debugging": "Find root cause before changing code. Reproduce the issue, inspect recent changes, form one hypothesis, then verify.",
+  "test-driven-development": "Write a focused failing test before production code, implement the smallest fix, then keep the suite green.",
+  "verification-before-completion": "Run the relevant checks and inspect results before claiming that work is complete.",
+  "requesting-code-review": "Before integration, review the change for regressions, missing tests, and unclear behavior.",
+  "receiving-code-review": "Evaluate review feedback technically, clarify ambiguous requests, and verify fixes before applying them."
+};
+
 export type SkillManagerDependencies = {
   clone?: (repoUrl: string, destination: string) => Promise<void>;
 };
@@ -33,7 +44,20 @@ export class SkillManager {
     const config = await this.configStore.load();
     const configured = config.skills ?? [];
     const configuredById = new Map(configured.filter((skill) => skill.id).map((skill) => [skill.id as string, skill]));
-    const builtins = DEFAULT_BUILTIN_SKILLS.map((skill) => ({ ...skill, ...configuredById.get(skill.id) }));
+    const builtins = await Promise.all(
+      DEFAULT_BUILTIN_SKILLS.map(async (skill) => {
+        const materialized = await this.materializeBuiltin(skill.id);
+        const configuredSkill = configuredById.get(skill.id);
+        return {
+          ...skill,
+          ...configuredSkill,
+          id: skill.id,
+          name: skill.name,
+          path: materialized,
+          source: "builtin" as const
+        };
+      })
+    );
     const external = configured.filter((skill) => skill.source !== "builtin" && !DEFAULT_BUILTIN_SKILLS.some((builtinSkill) => builtinSkill.id === skill.id));
     return [...builtins, ...external];
   }
@@ -89,6 +113,13 @@ export class SkillManager {
     const config = await this.configStore.load();
     await this.configStore.save({ ...config, skills });
   }
+
+  private async materializeBuiltin(id: string): Promise<string> {
+    const destination = join(this.workspacePath, ".coding-agent", "builtin-skills", id);
+    await mkdir(destination, { recursive: true });
+    await writeFile(join(destination, "SKILL.md"), builtinSkillContent(id), "utf8");
+    return destination;
+  }
 }
 
 function builtin(id: string, enabled: boolean): Required<Pick<AgentSkillConfig, "id" | "name" | "path" | "source" | "enabled">> {
@@ -99,6 +130,11 @@ function builtin(id: string, enabled: boolean): Required<Pick<AgentSkillConfig, 
     source: "builtin",
     enabled
   };
+}
+
+function builtinSkillContent(id: string): string {
+  const description = BUILTIN_SKILL_DESCRIPTIONS[id] ?? `Built-in workflow skill: ${id}.`;
+  return `---\nname: ${id}\ndescription: ${description}\n---\n\n# ${id}\n\n${description}\n`;
 }
 
 async function assertValidSkill(path: string): Promise<void> {

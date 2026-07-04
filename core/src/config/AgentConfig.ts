@@ -54,6 +54,8 @@ export const DEFAULT_AGENT_PERMISSION_POLICY: Required<AgentPermissionPolicy> = 
   deny: []
 };
 
+const MUTATING_BUILTIN_TOOLS = ["bash", "edit", "write"];
+
 export function mergeAgentConfig(stored: AgentConfig, runtime: AgentConfig): AgentConfig {
   const merged = {
     ...stored,
@@ -73,6 +75,7 @@ export function resolveAgentPermissionPolicy(config: AgentConfig): Required<Agen
 
 export function buildPiRpcArgs(config: AgentConfig): string[] {
   const args: string[] = [];
+  const runtimeTools = buildRuntimeToolConfig(config);
 
   pushValue(args, "--system-prompt", config.systemPrompt);
   for (const prompt of config.appendSystemPrompt ?? []) {
@@ -91,10 +94,26 @@ export function buildPiRpcArgs(config: AgentConfig): string[] {
     args.push("--no-builtin-tools");
   }
 
-  pushValue(args, "--tools", config.tools?.allow?.join(","));
-  pushValue(args, "--exclude-tools", config.tools?.deny?.join(","));
+  pushValue(args, "--tools", runtimeTools.allow?.join(","));
+  pushValue(args, "--exclude-tools", runtimeTools.deny?.join(","));
 
   return args;
+}
+
+export function buildRuntimeToolConfig(config: AgentConfig): AgentToolConfig {
+  const policy = resolveAgentPermissionPolicy(config);
+
+  if (policy.mode === "bypass") {
+    return {
+      allow: unique(config.tools?.allow ?? [...policy.allow, ...policy.confirm]),
+      deny: unique([...(config.tools?.deny ?? []), ...policy.deny])
+    };
+  }
+
+  return {
+    allow: unique(config.tools?.allow ?? policy.allow),
+    deny: unique([...(config.tools?.deny ?? []), ...policy.confirm, ...policy.deny, ...MUTATING_BUILTIN_TOOLS])
+  };
 }
 
 function withoutUndefined(config: AgentConfig): AgentConfig {
@@ -116,6 +135,10 @@ function pushValue(args: string[], flag: string, value: string | undefined): voi
   if (value) {
     args.push(flag, value);
   }
+}
+
+function unique(values: string[]): string[] {
+  return [...new Set(values.filter(Boolean))];
 }
 
 function withoutUndefinedRecord<T extends Record<string, unknown>>(value: T): T {

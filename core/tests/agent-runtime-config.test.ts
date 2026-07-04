@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   DEFAULT_AGENT_PERMISSION_POLICY,
   buildPiRpcArgs,
+  buildRuntimeToolConfig,
   mergeAgentConfig,
   resolveAgentPermissionPolicy
 } from "../src/config/AgentConfig.js";
@@ -60,6 +61,7 @@ describe("Agent runtime config", () => {
       buildPiRpcArgs({
         systemPrompt: "系统提示词",
         appendSystemPrompt: ["追加规则"],
+        permissionPolicy: { mode: "bypass" },
         skills: [
           { id: "review", name: "review", path: "/repo/.coding-agent/skills/review", source: "local", enabled: true },
           { id: "disabled", name: "disabled", path: "/repo/.coding-agent/skills/disabled", source: "local", enabled: false }
@@ -78,5 +80,26 @@ describe("Agent runtime config", () => {
       "--exclude-tools",
       "bash"
     ]);
+  });
+
+  it("maps permission modes to the tools Pi is allowed to execute", () => {
+    expect(buildRuntimeToolConfig({ permissionPolicy: { mode: "confirm" } })).toEqual({
+      allow: ["read", "ls", "grep", "find"],
+      deny: ["bash", "edit", "write"]
+    });
+
+    expect(buildRuntimeToolConfig({ permissionPolicy: { mode: "readonly" } })).toEqual({
+      allow: ["read", "ls", "grep", "find"],
+      deny: ["bash", "edit", "write"]
+    });
+
+    expect(buildRuntimeToolConfig({ permissionPolicy: { mode: "bypass" } })).toEqual({
+      allow: ["read", "ls", "grep", "find", "bash", "edit", "write"],
+      deny: []
+    });
+  });
+
+  it("does not expose mutating tools to Pi in manual mode", () => {
+    expect(buildPiRpcArgs({ permissionPolicy: { mode: "confirm" } })).toEqual(["--tools", "read,ls,grep,find", "--exclude-tools", "bash,edit,write"]);
   });
 });

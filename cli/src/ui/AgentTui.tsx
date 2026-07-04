@@ -26,6 +26,8 @@ export type AgentTuiProps = {
   mcpChecker?: McpConfigChecker;
 };
 
+export type SkillListProvider = Pick<SkillManager, "list">;
+
 type Mode =
   | "chat"
   | "command"
@@ -116,6 +118,17 @@ export function AgentTui(props: AgentTuiProps): React.ReactElement {
     setScrollOffset(0);
   }, []);
 
+  const stopActiveSession = useCallback(async () => {
+    if (!sessionRef.current) {
+      return;
+    }
+
+    await sessionRef.current.stop();
+    sessionRef.current = undefined;
+  }, []);
+
+  const buildRuntimeConfig = useCallback(() => buildRuntimeSessionConfig(config, skillManager), [config, skillManager]);
+
   const enterModelProviderMode = useCallback(() => {
     const currentIndex = providerOptions.findIndex((provider) => provider === config.provider);
     const nextProviderIndex = currentIndex >= 0 ? currentIndex : 0;
@@ -139,13 +152,10 @@ export function AgentTui(props: AgentTuiProps): React.ReactElement {
     };
     setConfig(nextConfig);
     setMode("chat");
-    if (sessionRef.current) {
-      await sessionRef.current.stop();
-      sessionRef.current = undefined;
-    }
+    await stopActiveSession();
     await props.saveConfig?.(nextConfig);
     appendEvent({ kind: "success", text: `模型已配置：${formatModel(nextConfig)}` });
-  }, [appendEvent, config, pendingApiKey, props, selectedModel, selectedProvider]);
+  }, [appendEvent, config, pendingApiKey, props, selectedModel, selectedProvider, stopActiveSession]);
 
   const savePermissionMode = useCallback(
     async (mode: AgentPermissionMode) => {
@@ -157,10 +167,11 @@ export function AgentTui(props: AgentTuiProps): React.ReactElement {
         }
       };
       setConfig(nextConfig);
+      await stopActiveSession();
       await props.saveConfig?.(nextConfig);
-      appendEvent({ kind: "success", text: `权限模式已设置：${formatPermissionMode(mode)}` });
+      appendEvent({ kind: "success", text: `权限模式已设置：${formatPermissionMode(mode)}。下一轮会话将使用新的工具边界。` });
     },
-    [appendEvent, config, props]
+    [appendEvent, config, props, stopActiveSession]
   );
 
   const openPermissionMode = useCallback(() => {
@@ -182,8 +193,9 @@ export function AgentTui(props: AgentTuiProps): React.ReactElement {
       return;
     }
     await skillManager.setEnabled(skill.id, skill.enabled === false);
+    await stopActiveSession();
     await openSkillList();
-  }, [openSkillList, selectedSkill, skillItems, skillManager]);
+  }, [openSkillList, selectedSkill, skillItems, skillManager, stopActiveSession]);
 
   const installSkill = useCallback(async () => {
     const source = skillInstallInput.trim();
@@ -192,9 +204,10 @@ export function AgentTui(props: AgentTuiProps): React.ReactElement {
     }
     const installed = await skillManager.install(source);
     setSkillInstallInput("");
+    await stopActiveSession();
     appendEvent({ kind: "success", text: `skill installed: ${installed.name ?? installed.id}` });
     await openSkillList();
-  }, [appendEvent, openSkillList, skillInstallInput, skillManager]);
+  }, [appendEvent, openSkillList, skillInstallInput, skillManager, stopActiveSession]);
 
   const openMcpMenu = useCallback(async () => {
     const servers = config.mcpServers ?? [];
@@ -244,7 +257,8 @@ export function AgentTui(props: AgentTuiProps): React.ReactElement {
       appendEvent({ kind: "user", text: prompt });
 
       try {
-        const activeSession = sessionRef.current ?? props.createSession?.(config);
+        const runtimeConfig = await buildRuntimeConfig();
+        const activeSession = sessionRef.current ?? props.createSession?.(runtimeConfig);
         if (!activeSession) {
           appendEvent({ kind: "error", text: "Agent 会话创建失败：缺少 core session factory。" });
           return;
@@ -266,7 +280,7 @@ export function AgentTui(props: AgentTuiProps): React.ReactElement {
         setBusy(false);
       }
     },
-    [appendEvent, appendEvents, busy, config, props]
+    [appendEvent, appendEvents, buildRuntimeConfig, busy, props]
   );
 
   const handlePrompt = useCallback(
@@ -473,6 +487,14 @@ export function AgentTui(props: AgentTuiProps): React.ReactElement {
       </Box>
     </Box>
   );
+}
+
+export async function buildRuntimeSessionConfig(config: AgentConfig, skillManager: SkillListProvider): Promise<AgentConfig> {
+  const skills = await skillManager.list();
+  return {
+    ...config,
+    skills
+  };
 }
 
 function handleCommandInput(

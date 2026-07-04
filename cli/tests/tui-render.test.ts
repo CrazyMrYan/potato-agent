@@ -1,7 +1,7 @@
 import React from "react";
 import { render } from "ink-testing-library";
 import { describe, expect, it } from "vitest";
-import { AgentTui } from "../src/ui/AgentTui.js";
+import { AgentTui, buildRuntimeSessionConfig } from "../src/ui/AgentTui.js";
 
 describe("AgentTui render", () => {
   it("renders a cleaner agent workspace instead of the old raw sections", () => {
@@ -55,5 +55,31 @@ describe("AgentTui render", () => {
     expect(rendered.lastFrame()).toContain("/skill");
     expect(rendered.lastFrame()).toContain("/mcp");
     expect(rendered.lastFrame()).toContain("/agent");
+  });
+
+  it("builds runtime session config with the current SkillManager list", async () => {
+    await expect(
+      buildRuntimeSessionConfig(
+        {
+          workspacePath: "/repo",
+          provider: "deepseek",
+          model: "deepseek-reasoner"
+        },
+        {
+          async list() {
+            return [
+              { id: "systematic-debugging", name: "systematic-debugging", path: "/repo/.coding-agent/builtin-skills/systematic-debugging", source: "builtin", enabled: true },
+              { id: "skill-creator", name: "skill-creator", path: "/repo/.coding-agent/builtin-skills/skill-creator", source: "builtin", enabled: false }
+            ];
+          }
+        }
+      )
+    ).resolves.toMatchObject({
+      workspacePath: "/repo",
+      skills: [
+      { id: "systematic-debugging", name: "systematic-debugging", path: "/repo/.coding-agent/builtin-skills/systematic-debugging", source: "builtin", enabled: true },
+      { id: "skill-creator", name: "skill-creator", path: "/repo/.coding-agent/builtin-skills/skill-creator", source: "builtin", enabled: false }
+      ]
+    });
   });
 });

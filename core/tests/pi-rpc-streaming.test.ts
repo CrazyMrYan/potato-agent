@@ -58,6 +58,48 @@ class FakeRpcClient implements PiRpcClientLike {
 }
 
 describe("PiRpcAdapter streaming", () => {
+  it("starts Pi with manual-mode read-only tools and enabled skills", async () => {
+    const client = new FakeRpcClient();
+    let clientOptions: unknown;
+    const adapter = new PiRpcAdapter(
+      {
+        provider: "deepseek",
+        model: "deepseek-chat",
+        workspacePath: "/repo",
+        apiKeyEnvName: "DEEPSEEK_API_KEY",
+        apiKey: "test-key",
+        timeoutMs: 1000,
+        permissionPolicy: { mode: "confirm" },
+        skills: [
+          { id: "debug", name: "debug", path: "/repo/.coding-agent/builtin-skills/debug", source: "builtin", enabled: true },
+          { id: "off", name: "off", path: "/repo/.coding-agent/builtin-skills/off", source: "builtin", enabled: false }
+        ]
+      },
+      {
+        createClient: (options) => {
+          clientOptions = options;
+          return client;
+        }
+      }
+    );
+
+    const iterator = adapter.run({
+      taskId: "task_1",
+      workspacePath: "/repo",
+      prompt: "解释项目",
+      mode: "run",
+      approvalMode: "manual"
+    })[Symbol.asyncIterator]();
+
+    await iterator.next();
+    client.finish();
+    await iterator.next();
+
+    expect(clientOptions).toMatchObject({
+      args: ["--skill", "/repo/.coding-agent/builtin-skills/debug", "--tools", "read,ls,grep,find", "--exclude-tools", "bash,edit,write"]
+    });
+  });
+
   it("yields mapped Pi events before the RPC client becomes idle", async () => {
     const client = new FakeRpcClient();
     const adapter = new PiRpcAdapter(

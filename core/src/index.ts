@@ -7,7 +7,7 @@ export type {
   AgentToolConfig,
   ResolvedAgentConfig
 } from "./config/AgentConfig.js";
-export { DEFAULT_AGENT_PERMISSION_POLICY, buildPiRpcArgs, mergeAgentConfig, resolveAgentPermissionPolicy } from "./config/AgentConfig.js";
+export { DEFAULT_AGENT_PERMISSION_POLICY, buildPiRpcArgs, buildRuntimeToolConfig, mergeAgentConfig, resolveAgentPermissionPolicy } from "./config/AgentConfig.js";
 export { ensureDefaultAgentConfig, FileAgentConfigStore, type AgentConfigStore } from "./config/AgentConfigStore.js";
 export { resolveDefaultWorkspacePath } from "./config/Workspace.js";
 export { GitDiffService } from "./diff/DiffService.js";
