@@ -68,8 +68,8 @@ describe("AgentTui render", () => {
         {
           async list() {
             return [
-              { id: "systematic-debugging", name: "systematic-debugging", path: "/repo/.coding-agent/builtin-skills/systematic-debugging", source: "builtin", enabled: true },
-              { id: "skill-creator", name: "skill-creator", path: "/repo/.coding-agent/builtin-skills/skill-creator", source: "builtin", enabled: false }
+              { id: "systematic-debugging", name: "systematic-debugging", path: "/repo/.coding-agent/skills/.builtin/systematic-debugging", source: "builtin", enabled: true },
+              { id: "skill-creator", name: "skill-creator", path: "/repo/.coding-agent/skills/.builtin/skill-creator", source: "builtin", enabled: false }
             ];
           }
         }
@@ -77,8 +77,8 @@ describe("AgentTui render", () => {
     ).resolves.toMatchObject({
       workspacePath: "/repo",
       skills: [
-      { id: "systematic-debugging", name: "systematic-debugging", path: "/repo/.coding-agent/builtin-skills/systematic-debugging", source: "builtin", enabled: true },
-      { id: "skill-creator", name: "skill-creator", path: "/repo/.coding-agent/builtin-skills/skill-creator", source: "builtin", enabled: false }
+        { id: "systematic-debugging", name: "systematic-debugging", path: "/repo/.coding-agent/skills/.builtin/systematic-debugging", source: "builtin", enabled: true },
+        { id: "skill-creator", name: "skill-creator", path: "/repo/.coding-agent/skills/.builtin/skill-creator", source: "builtin", enabled: false }
       ]
     });
   });

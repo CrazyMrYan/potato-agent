@@ -115,7 +115,7 @@ export class SkillManager {
   }
 
   private async materializeBuiltin(id: string): Promise<string> {
-    const destination = join(this.workspacePath, ".coding-agent", "builtin-skills", id);
+    const destination = join(this.workspacePath, ".coding-agent", "skills", ".builtin", id);
     await mkdir(destination, { recursive: true });
     await writeFile(join(destination, "SKILL.md"), builtinSkillContent(id), "utf8");
     return destination;

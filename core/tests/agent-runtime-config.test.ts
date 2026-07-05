@@ -73,6 +73,7 @@ describe("Agent runtime config", () => {
       "系统提示词",
       "--append-system-prompt",
       "追加规则",
+      "--no-skills",
       "--skill",
       "/repo/.coding-agent/skills/review",
       "--tools",
@@ -101,5 +102,24 @@ describe("Agent runtime config", () => {
 
   it("does not expose mutating tools to Pi in manual mode", () => {
     expect(buildPiRpcArgs({ permissionPolicy: { mode: "confirm" } })).toEqual(["--tools", "read,ls,grep,find", "--exclude-tools", "bash,edit,write"]);
+  });
+
+  it("disables Pi skill auto-discovery when runtime skills are managed explicitly", () => {
+    expect(
+      buildPiRpcArgs({
+        skills: [
+          { id: "enabled", name: "enabled", path: "/repo/.coding-agent/skills/.builtin/enabled", source: "builtin", enabled: true },
+          { id: "disabled", name: "disabled", path: "/repo/.coding-agent/skills/.builtin/disabled", source: "builtin", enabled: false }
+        ]
+      })
+    ).toEqual([
+      "--no-skills",
+      "--skill",
+      "/repo/.coding-agent/skills/.builtin/enabled",
+      "--tools",
+      "read,ls,grep,find",
+      "--exclude-tools",
+      "bash,edit,write"
+    ]);
   });
 });

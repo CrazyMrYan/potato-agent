@@ -71,8 +71,8 @@ describe("PiRpcAdapter streaming", () => {
         timeoutMs: 1000,
         permissionPolicy: { mode: "confirm" },
         skills: [
-          { id: "debug", name: "debug", path: "/repo/.coding-agent/builtin-skills/debug", source: "builtin", enabled: true },
-          { id: "off", name: "off", path: "/repo/.coding-agent/builtin-skills/off", source: "builtin", enabled: false }
+          { id: "debug", name: "debug", path: "/repo/.coding-agent/skills/.builtin/debug", source: "builtin", enabled: true },
+          { id: "off", name: "off", path: "/repo/.coding-agent/skills/.builtin/off", source: "builtin", enabled: false }
         ]
       },
       {
@@ -96,7 +96,7 @@ describe("PiRpcAdapter streaming", () => {
     await iterator.next();
 
     expect(clientOptions).toMatchObject({
-      args: ["--skill", "/repo/.coding-agent/builtin-skills/debug", "--tools", "read,ls,grep,find", "--exclude-tools", "bash,edit,write"]
+      args: ["--no-skills", "--skill", "/repo/.coding-agent/skills/.builtin/debug", "--tools", "read,ls,grep,find", "--exclude-tools", "bash,edit,write"]
     });
   });
 

@@ -33,6 +33,7 @@ describe("SkillManager", () => {
 
       expect(skill?.source).toBe("builtin");
       expect(skill?.path).not.toMatch(/^builtin:/);
+      expect(skill?.path).toBe(join(workspace, ".coding-agent", "skills", ".builtin", "systematic-debugging"));
       await expect(readFile(join(skill?.path ?? "", "SKILL.md"), "utf8")).resolves.toContain("name: systematic-debugging");
     } finally {
       await rm(workspace, { recursive: true, force: true });
@@ -52,7 +53,7 @@ describe("SkillManager", () => {
       const skill = skills.find((item) => item.id === "systematic-debugging");
 
       expect(skill?.enabled).toBe(false);
-      expect(skill?.path).toBe(join(workspace, ".coding-agent", "builtin-skills", "systematic-debugging"));
+      expect(skill?.path).toBe(join(workspace, ".coding-agent", "skills", ".builtin", "systematic-debugging"));
     } finally {
       await rm(workspace, { recursive: true, force: true });
     }

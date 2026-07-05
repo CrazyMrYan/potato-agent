@@ -82,6 +82,10 @@ export function buildPiRpcArgs(config: AgentConfig): string[] {
     pushValue(args, "--append-system-prompt", prompt);
   }
 
+  if (config.skills) {
+    args.push("--no-skills");
+  }
+
   for (const skill of (config.skills ?? []).filter((skill) => skill.enabled !== false)) {
     pushValue(args, "--skill", skill.path);
   }
