@@ -11,14 +11,17 @@ type PiMessageContent = {
 
 export type RawPiEvent = {
   type?: string;
+  id?: string;
+  method?: string;
+  title?: string;
+  message?: string | {
+    role?: string;
+    content?: PiMessageContent[];
+  };
   toolName?: string;
   args?: unknown;
   result?: unknown;
   isError?: boolean;
-  message?: {
-    role?: string;
-    content?: PiMessageContent[];
-  };
 };
 
 export class PiEventMapper {
@@ -30,9 +33,9 @@ export class PiEventMapper {
   map(event: RawPiEvent): AgentEvent[] {
     switch (event.type) {
       case "agent_start":
-        return [{ type: "step.started", taskId: this.taskId, title: "Pi 已开始处理任务" }];
+        return [{ type: "step.started", taskId: this.taskId, title: "开始处理任务" }];
       case "turn_start":
-        return [{ type: "step.started", taskId: this.taskId, title: "Pi 开始新一轮推理" }];
+        return [{ type: "step.started", taskId: this.taskId, title: "思考中..." }];
       case "message_update":
         return this.mapMessageUpdate(event);
       case "tool_execution_start":
@@ -54,17 +57,20 @@ export class PiEventMapper {
             output: summarizeToolResult(event.result)
           }
         ];
+      case "extension_ui_request":
+        return this.mapExtensionUiRequest(event);
       default:
         return [];
     }
   }
 
   private mapMessageUpdate(event: RawPiEvent): AgentEvent[] {
-    if (event.message?.role !== "assistant") {
+    const message = typeof event.message === "object" ? event.message : undefined;
+    if (message?.role !== "assistant") {
       return [];
     }
 
-    const content = event.message.content ?? [];
+    const content = message.content ?? [];
     const text = joinContent(content, "text");
     const thinking = joinContent(content, "thinking");
     const events: AgentEvent[] = [];
@@ -82,6 +88,29 @@ export class PiEventMapper {
     this.previousAssistantText = text;
 
     return events;
+  }
+
+  private mapExtensionUiRequest(event: RawPiEvent): AgentEvent[] {
+    if (event.method !== "confirm" || !event.id) {
+      return [];
+    }
+
+    const title = event.title ?? "Approve tool call?";
+    const detail = typeof event.message === "string" ? event.message : "";
+    return [
+      {
+        type: "approval.requested",
+        taskId: this.taskId,
+        request: {
+          id: event.id,
+          taskId: this.taskId,
+          kind: inferApprovalKind(title, detail),
+          title,
+          detail,
+          risk: inferApprovalRisk(title, detail)
+        }
+      }
+    ];
   }
 }
 
@@ -199,4 +228,23 @@ function pickString(input: Record<string, unknown> | undefined, keys: string[]):
 function truncate(value: string, maxLength = 160): string {
   const normalized = value.replace(/\s+/g, " ").trim();
   return normalized.length > maxLength ? `${normalized.slice(0, maxLength - 1)}...` : normalized;
+}
+
+function inferApprovalKind(title: string, detail: string): "run_command" | "write_file" | "delete_file" {
+  const haystack = `${title} ${detail}`.toLowerCase();
+  if (haystack.includes("delete") || haystack.includes("rm ")) {
+    return "delete_file";
+  }
+  if (haystack.includes("bash") || haystack.includes("command")) {
+    return "run_command";
+  }
+  return "write_file";
+}
+
+function inferApprovalRisk(title: string, detail: string): "low" | "medium" | "high" {
+  const haystack = `${title} ${detail}`.toLowerCase();
+  if (/\b(rm\s+-rf|sudo|chmod|chown|delete)\b/.test(haystack)) {
+    return "high";
+  }
+  return "medium";
 }

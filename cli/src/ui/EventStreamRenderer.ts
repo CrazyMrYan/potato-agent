@@ -90,6 +90,14 @@ export class EventStreamRenderer {
           : { kind: "error", text: this.red(joinParts(event.tool, event.output ? this.formatToolOutput(event.output) : undefined)) };
       case "approval.requested":
         return { kind: "warning", text: this.yellow(event.request.title) };
+      case "subagent.selected":
+        return { kind: "step", text: this.blue(`SubAgent selected: ${event.name} (${event.subAgentId})`) };
+      case "subagent.started":
+        return { kind: "step", text: this.blue(`SubAgent started: ${event.name}`) };
+      case "subagent.finished":
+        return { kind: "success", text: this.green(`SubAgent finished: ${event.name}`) };
+      case "subagent.failed":
+        return { kind: "error", text: this.red(`SubAgent failed: ${event.name} ${event.error.message}`) };
       case "diff.produced":
         return { kind: "diff", text: this.magenta(`diff ${event.changeSet.files.length} 个文件`) };
       case "verification.started":

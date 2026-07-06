@@ -43,6 +43,37 @@ export type ApprovalRequestedEvent = {
   request: ApprovalRequest;
 };
 
+export type SubAgentSelectedEvent = {
+  type: "subagent.selected";
+  taskId: string;
+  subAgentId: string;
+  name: string;
+  description: string;
+};
+
+export type SubAgentStartedEvent = {
+  type: "subagent.started";
+  taskId: string;
+  subAgentId: string;
+  name: string;
+};
+
+export type SubAgentFinishedEvent = {
+  type: "subagent.finished";
+  taskId: string;
+  subAgentId: string;
+  name: string;
+  summary?: string;
+};
+
+export type SubAgentFailedEvent = {
+  type: "subagent.failed";
+  taskId: string;
+  subAgentId: string;
+  name: string;
+  error: AgentError;
+};
+
 export type DiffProducedEvent = {
   type: "diff.produced";
   taskId: string;
@@ -82,6 +113,10 @@ export type AgentEvent =
   | ToolCallFinishedEvent
   | AssistantMessageDeltaEvent
   | ApprovalRequestedEvent
+  | SubAgentSelectedEvent
+  | SubAgentStartedEvent
+  | SubAgentFinishedEvent
+  | SubAgentFailedEvent
   | DiffProducedEvent
   | VerificationStartedEvent
   | VerificationFinishedEvent

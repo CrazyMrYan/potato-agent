@@ -14,7 +14,7 @@ export async function chatCommand(options: ChatCommandOptions = {}): Promise<voi
   const workspacePath = options.workspacePath ?? (await (options.resolveWorkspacePath ?? resolveDefaultWorkspacePath)(options.cwd ?? process.cwd()));
   const session = options.createSession
     ? options.createSession({ ...options, workspacePath })
-    : new AgentSessionFactory().create({ ...options, workspacePath });
+    : await new AgentSessionFactory().create({ ...options, workspacePath });
   const read = options.read ?? (() => input({ message: "你" }));
   const write = options.write ?? console.log;
 

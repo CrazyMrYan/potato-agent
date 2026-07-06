@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { AgentEvent, ApprovalDecision, AssistantMessageDeltaEvent, ChangeSet, RunTaskInput } from "../src/index.js";
+import type { AgentEvent, ApprovalDecision, AssistantMessageDeltaEvent, ChangeSet, RunTaskInput, SubAgentSelectedEvent } from "../src/index.js";
 
 describe("protocol exports", () => {
   it("defines task, event, approval, and changeset contracts", () => {
@@ -25,11 +25,19 @@ describe("protocol exports", () => {
       channel: "thinking",
       text: "正在分析目录结构"
     };
+    const selected: SubAgentSelectedEvent = {
+      type: "subagent.selected",
+      taskId: input.taskId,
+      subAgentId: "reviewer",
+      name: "Reviewer",
+      description: "Review code"
+    };
 
     expect(input.mode).toBe("run");
     expect(decision.type).toBe("allow");
     expect(changeSet.files[0]?.status).toBe("modified");
     expect(event.type).toBe("task.started");
     expect(assistantDelta.channel).toBe("thinking");
+    expect(selected.type).toBe("subagent.selected");
   });
 });

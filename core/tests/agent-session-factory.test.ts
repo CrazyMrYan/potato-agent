@@ -8,6 +8,7 @@ class FakeSessionAdapter implements PiSessionAdapter {
   started = false;
   stopped = false;
   prompts: string[] = [];
+  approvals: Array<{ requestId: string; approved: boolean }> = [];
 
   async start(): Promise<void> {
     this.started = true;
@@ -21,6 +22,10 @@ class FakeSessionAdapter implements PiSessionAdapter {
     this.prompts.push(prompt);
     yield { type: "task.finished", taskId: "turn_1", summary: `完成：${prompt}` };
   }
+
+  async respondToApproval(requestId: string, approved: boolean): Promise<void> {
+    this.approvals.push({ requestId, approved });
+  }
 }
 
 describe("AgentSessionFactory", () => {
@@ -31,7 +36,7 @@ describe("AgentSessionFactory", () => {
       env: { DEEPSEEK_API_KEY: "test-key" }
     });
 
-    const session = factory.create({
+    const session = await factory.create({
       provider: "deepseek",
       model: "deepseek-reasoner",
       workspacePath: "/repo"
@@ -59,7 +64,7 @@ describe("AgentSessionFactory", () => {
       env: { DEEPSEEK_API_KEY: "test-key" }
     });
 
-    const session = factory.create({
+    const session = await factory.create({
       provider: "deepseek",
       model: "deepseek-reasoner",
       workspacePath: "/repo"
@@ -73,6 +78,45 @@ describe("AgentSessionFactory", () => {
 
     expect(traceStore.entries.map((entry) => entry.kind)).toEqual(["task.input", "event", "task.finished"]);
     expect(traceStore.entries[0]).toEqual(expect.objectContaining({ kind: "task.input", taskId: "turn_1" }));
+  });
+
+  it("forwards approval decisions to the active adapter", async () => {
+    const adapter = new FakeSessionAdapter();
+    const factory = new AgentSessionFactory({
+      createAdapter: () => adapter,
+      env: { DEEPSEEK_API_KEY: "test-key" }
+    });
+    const session = await factory.create({
+      provider: "deepseek",
+      model: "deepseek-reasoner",
+      workspacePath: "/repo"
+    });
+
+    await session.approve("approval_1", true);
+    await session.approve("approval_2", false);
+
+    expect(adapter.approvals).toEqual([
+      { requestId: "approval_1", approved: true },
+      { requestId: "approval_2", approved: false }
+    ]);
+  });
+
+  it("rejects approval and stops the active adapter when pausing", async () => {
+    const adapter = new FakeSessionAdapter();
+    const factory = new AgentSessionFactory({
+      createAdapter: () => adapter,
+      env: { DEEPSEEK_API_KEY: "test-key" }
+    });
+    const session = await factory.create({
+      provider: "deepseek",
+      model: "deepseek-reasoner",
+      workspacePath: "/repo"
+    });
+
+    await session.rejectAndPause("approval_1");
+
+    expect(adapter.approvals).toEqual([{ requestId: "approval_1", approved: false }]);
+    expect(adapter.stopped).toBe(true);
   });
 });
 

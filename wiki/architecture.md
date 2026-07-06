@@ -72,6 +72,140 @@ flowchart TB
     CLI --> Wiki["知识库<br/>架构 / 决策 / 实验记录"]
 ```
 
+## 包级架构
+
+当前代码采用 pnpm workspace，分为三个可独立理解的包：
+
+```text
+protocol/  @coding-agent/protocol
+  稳定协议层，只放类型契约。
+
+core/      @coding-agent/core
+  Agent 产品能力层，包含配置、会话、编排、Pi 适配、trace、diff、skill、MCP、SubAgent 和权限边界。
+
+cli/       @coding-agent/cli
+  用户入口层，包含 commander 命令、Ink TUI、输入框、菜单和终端事件渲染。
+```
+
+依赖方向必须保持单向：
+
+```mermaid
+flowchart LR
+    CLI["@coding-agent/cli<br/>命令 / TUI / 输入 / 展示"] --> Core["@coding-agent/core<br/>会话 / 编排 / Pi 适配 / 能力管理"]
+    CLI --> Protocol["@coding-agent/protocol<br/>事件 / 任务 / 审批 / diff 类型"]
+    Core --> Protocol
+    Core --> Pi["@earendil-works/pi-coding-agent<br/>Pi RPC / 底层 agent 执行"]
+
+    Protocol -. "不依赖业务实现" .-> None1["无下游依赖"]
+```
+
+约束：
+
+- `protocol` 不能依赖 `core` 或 `cli`。
+- `core` 不能依赖 `cli`。
+- `cli` 可以依赖 `core` 和 `protocol`，但不直接接管 Pi 细节。
+- Pi 相关实现收敛在 `core/src/pi/`，CLI 只通过 `AgentSessionFactory`、`AgentSession` 或命令 API 使用。
+
+## protocol 独立架构
+
+`protocol` 是跨层契约包，目标是稳定、轻量、无副作用。它定义“系统里发生什么”，不定义“怎么执行”。
+
+```mermaid
+flowchart TB
+    Protocol["@coding-agent/protocol"]
+    Protocol --> Task["task.ts<br/>RunTaskInput / TaskMode / ApprovalMode"]
+    Protocol --> Events["events.ts<br/>AgentEvent union<br/>task / step / tool / approval / subagent / diff / verification"]
+    Protocol --> Approval["approval.ts<br/>ApprovalRequest / ApprovalDecision"]
+    Protocol --> Changeset["changeset.ts<br/>ChangeSet / FileChangeStatus"]
+    Protocol --> Errors["errors.ts<br/>AgentError / AgentErrorCode"]
+    Protocol --> Index["index.ts<br/>统一导出"]
+```
+
+边界：
+
+- 只包含 TypeScript 类型和稳定事件结构。
+- 不读取文件、不启动进程、不访问 Git、不包含 UI。
+- `core` 和 `cli` 都可以使用这些类型，保证事件流和命令输出有共同语言。
+
+## core 独立架构
+
+`core` 是本项目的 Agent 产品能力层。它把 Pi 的底层执行能力包装成可观测、可配置、可扩展的 Coding Agent 会话。
+
+```mermaid
+flowchart TB
+    Core["@coding-agent/core"]
+
+    Config["config/<br/>AgentConfig / ConfigStore / Workspace"] --> SessionFactory["session/AgentSessionFactory"]
+    Skills["skills/SkillManager"] --> SessionFactory
+    SubAgents["subagent/<br/>SubAgentManager / SubAgentConfig"] --> SessionFactory
+
+    SessionFactory --> Session["session/AgentSession<br/>start / send / approve / pause"]
+    Session --> PiAdapter["pi/PiSessionAdapter"]
+    PiAdapter --> PiMapper["pi/PiEventMapper"]
+    PiMapper --> ProtocolEvents["@coding-agent/protocol events"]
+
+    Gateway["gateway/<br/>AgentGateway / LocalAgentGateway"] --> Orchestrator["orchestrator/AgentOrchestrator"]
+    Orchestrator --> Loop["loop/AgentLoop<br/>lifecycle / trace / diff / final events"]
+    Loop --> Trace["trace/JsonlTraceStore"]
+    Loop --> Diff["diff/GitDiffService"]
+
+    Tools["tools/ToolBoundary"] --> Config
+    MCP["mcp/McpConfigChecker"] --> Config
+    Runtime["runtime/RuntimeCapabilityReporter"] --> Orchestrator
+```
+
+主要职责：
+
+- `config/`：模型、workspace、工具权限、skills、MCP、SubAgent 等运行配置。
+- `session/`：长期会话抽象，负责 start/send/stop/approval/pause。
+- `pi/`：Pi RPC 适配和原始事件映射，隔离第三方执行引擎。
+- `loop/` 和 `orchestrator/`：统一任务生命周期，围绕 adapter 事件补齐 trace、diff、最终状态。
+- `trace/`：JSONL 任务审计记录。
+- `diff/`：Git 工作区变更检测和 patch 读取。
+- `skills/`：内置和外部 skill 的发现、安装、启用/禁用。
+- `subagent/`：单 SubAgent 选择和配置合并。
+- `mcp/`：MCP 配置检测。
+- `tools/`：工具权限边界抽象。
+
+## cli 独立架构
+
+`cli` 是用户交互层。它不拥有 Agent 决策逻辑，只负责把用户输入转成 core 调用，并把 core/protocol 事件展示出来。
+
+```mermaid
+flowchart TB
+    CLI["@coding-agent/cli"]
+
+    Entry["cli.ts<br/>commander 入口"] --> Commands["commands/"]
+    Commands --> Run["run.ts<br/>一次性任务"]
+    Commands --> Chat["chat.ts<br/>多轮命令行会话"]
+    Commands --> DiffCmd["diff.ts<br/>显示 Git diff"]
+    Commands --> TraceCmd["trace.ts<br/>读取 trace"]
+    Commands --> TuiCmd["tui.tsx<br/>启动 Ink TUI"]
+
+    TuiCmd --> AgentTui["ui/AgentTui.tsx<br/>TUI 状态机 / slash menu / approval / skill / mcp / subagent"]
+    AgentTui --> PromptEditor["ui/PromptEditor.ts<br/>光标 / 补全 / @file / $skill token"]
+    AgentTui --> Renderer["ui/EventStreamRenderer.ts<br/>AgentEvent -> 终端行"]
+
+    Commands --> Core["@coding-agent/core"]
+    AgentTui --> Core
+    Renderer --> Protocol["@coding-agent/protocol"]
+```
+
+主要职责：
+
+- `cli.ts`：定义 `agent`、`agent run`、`agent chat`、`agent diff`、`agent trace`。
+- `commands/`：命令模式的薄封装，负责参数解析后的业务调用。
+- `ui/AgentTui.tsx`：交互式 TUI 状态机，处理 `/mode`、`/skill`、`/mcp`、`/agent`、审批、暂停、diff 展示。
+- `ui/PromptEditor.ts`：输入框编辑模型，支持光标、补全检测、`@file`、`$skill`。
+- `ui/EventStreamRenderer.ts`：把 protocol 事件转成终端可读文本。
+
+CLI 不应该直接：
+
+- 解析 Pi 原始事件。
+- 决定 agent 编排策略。
+- 直接读取或修改 core 的持久化结构。
+- 绕过 core 去实现权限、trace、diff、skills 或 SubAgent 逻辑。
+
 ## 任务执行流程
 
 ```mermaid

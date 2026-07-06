@@ -1,4 +1,8 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   DEFAULT_AGENT_PERMISSION_POLICY,
   buildPiRpcArgs,
@@ -85,8 +89,8 @@ describe("Agent runtime config", () => {
 
   it("maps permission modes to the tools Pi is allowed to execute", () => {
     expect(buildRuntimeToolConfig({ permissionPolicy: { mode: "confirm" } })).toEqual({
-      allow: ["read", "ls", "grep", "find"],
-      deny: ["bash", "edit", "write"]
+      allow: ["read", "ls", "grep", "find", "bash", "edit", "write"],
+      deny: []
     });
 
     expect(buildRuntimeToolConfig({ permissionPolicy: { mode: "readonly" } })).toEqual({
@@ -100,8 +104,19 @@ describe("Agent runtime config", () => {
     });
   });
 
-  it("does not expose mutating tools to Pi in manual mode", () => {
-    expect(buildPiRpcArgs({ permissionPolicy: { mode: "confirm" } })).toEqual(["--tools", "read,ls,grep,find", "--exclude-tools", "bash,edit,write"]);
+  it("exposes mutating tools to Pi in manual mode so runtime approval can gate them", () => {
+    expect(buildPiRpcArgs({ permissionPolicy: { mode: "confirm" } })).toEqual(["--tools", "read,ls,grep,find,bash,edit,write"]);
+  });
+
+  it("materializes manual approval extension with file diff preview", () => {
+    const workspace = mkdtempSync(join(tmpdir(), "coding-agent-approval-"));
+    const args = buildPiRpcArgs({ workspacePath: workspace, permissionPolicy: { mode: "confirm" } });
+    const extensionPath = args.at(args.indexOf("--extension") + 1);
+
+    expect(extensionPath).toBeTruthy();
+    const source = readFileSync(extensionPath as string, "utf8");
+    expect(source).toContain("formatWritePreview");
+    expect(source).toContain("simpleUnifiedDiff");
   });
 
   it("disables Pi skill auto-discovery when runtime skills are managed explicitly", () => {
@@ -117,9 +132,7 @@ describe("Agent runtime config", () => {
       "--skill",
       "/repo/.coding-agent/skills/.builtin/enabled",
       "--tools",
-      "read,ls,grep,find",
-      "--exclude-tools",
-      "bash,edit,write"
+      "read,ls,grep,find,bash,edit,write"
     ]);
   });
 });

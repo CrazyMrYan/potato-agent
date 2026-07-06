@@ -4,6 +4,7 @@ import {
   GitDiffService,
   JsonlTraceStore,
   LocalAgentGateway,
+  SubAgentManager,
   type DiffService,
   type PiAdapter,
   PiRpcAdapter,
@@ -46,10 +47,13 @@ export async function runCommand(prompt: string, options: RunCommandOptions = {}
     approvalMode: "manual"
   };
 
-  const adapter = options.createAdapter ? options.createAdapter({ workspacePath, ...options }) : createAdapter({ ...options, workspacePath });
+  const subAgentManager = new SubAgentManager();
+  const runtimeConfig = await subAgentManager.applyActive({ ...options, workspacePath });
+  const activeSubAgent = (await subAgentManager.list()).find((agent) => agent.id === runtimeConfig.activeSubAgentId);
+  const adapter = options.createAdapter ? options.createAdapter({ workspacePath, ...runtimeConfig }) : createAdapter({ ...runtimeConfig, workspacePath });
   const traceStore = options.createTraceStore ? options.createTraceStore(workspacePath) : new JsonlTraceStore(workspacePath);
   const diffService = options.createDiffService ? options.createDiffService() : new GitDiffService();
-  const gateway = new LocalAgentGateway(new AgentOrchestrator(adapter, { traceStore, diffService }));
+  const gateway = new LocalAgentGateway(new AgentOrchestrator(adapter, { traceStore, diffService, subAgent: activeSubAgent }));
   const write = options.write ?? console.log;
   const renderer = new EventStreamRenderer();
 

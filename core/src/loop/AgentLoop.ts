@@ -1,6 +1,7 @@
 import type { AgentEvent, RunTaskInput, TaskFailedEvent, TaskFinishedEvent } from "@coding-agent/protocol";
 import type { DiffService } from "../diff/DiffService.js";
 import type { PiAdapter } from "../pi/PiAdapter.js";
+import type { SubAgentConfig } from "../subagent/SubAgentConfig.js";
 import type { RuntimeCapabilityReport, TraceStore } from "../trace/TraceStore.js";
 import { nowIso } from "../trace/TraceStore.js";
 
@@ -8,6 +9,7 @@ export type AgentLoopDependencies = {
   traceStore?: TraceStore;
   diffService?: DiffService;
   runtimeCapability?: RuntimeCapabilityReport;
+  subAgent?: SubAgentConfig;
 };
 
 export class AgentLoop {
@@ -31,6 +33,28 @@ export class AgentLoop {
     await this.traceEvent(started);
     yield started;
 
+    const subAgent = this.dependencies.subAgent?.enabled === false ? undefined : this.dependencies.subAgent;
+    if (subAgent && subAgent.id !== "default") {
+      const selected: AgentEvent = {
+        type: "subagent.selected",
+        taskId: input.taskId,
+        subAgentId: subAgent.id,
+        name: subAgent.name,
+        description: subAgent.description
+      };
+      await this.traceEvent(selected);
+      yield selected;
+
+      const subAgentStarted: AgentEvent = {
+        type: "subagent.started",
+        taskId: input.taskId,
+        subAgentId: subAgent.id,
+        name: subAgent.name
+      };
+      await this.traceEvent(subAgentStarted);
+      yield subAgentStarted;
+    }
+
     let finalEvent: TaskFinishedEvent | TaskFailedEvent | undefined;
     for await (const event of this.adapter.run(input)) {
       if (event.type === "task.finished" || event.type === "task.failed") {
@@ -40,6 +64,27 @@ export class AgentLoop {
 
       await this.traceEvent(event);
       yield event;
+    }
+
+    if (subAgent && subAgent.id !== "default" && finalEvent) {
+      const subAgentFinal: AgentEvent =
+        finalEvent.type === "task.failed"
+          ? {
+              type: "subagent.failed",
+              taskId: input.taskId,
+              subAgentId: subAgent.id,
+              name: subAgent.name,
+              error: finalEvent.error
+            }
+          : {
+              type: "subagent.finished",
+              taskId: input.taskId,
+              subAgentId: subAgent.id,
+              name: subAgent.name,
+              summary: finalEvent.summary
+            };
+      await this.traceEvent(subAgentFinal);
+      yield subAgentFinal;
     }
 
     if (finalEvent?.type !== "task.failed") {

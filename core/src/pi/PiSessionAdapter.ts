@@ -1,5 +1,5 @@
 import type { AgentEvent } from "@coding-agent/protocol";
-import { RpcClient, type RpcClientOptions } from "@earendil-works/pi-coding-agent";
+import { RpcClient, type RpcClientOptions, type RpcExtensionUIResponse } from "@earendil-works/pi-coding-agent";
 import { buildPiRpcArgs } from "../config/AgentConfig.js";
 import { PiEventMapper, type RawPiEvent } from "./PiEventMapper.js";
 import type { PiAdapterOptions } from "./PiAdapter.js";
@@ -9,6 +9,7 @@ export type PiSessionAdapter = {
   start(): Promise<void>;
   stop(): Promise<void>;
   send(prompt: string): AsyncIterable<AgentEvent>;
+  respondToApproval?(requestId: string, approved: boolean): Promise<void>;
 };
 
 type PiSessionAdapterDependencies = {
@@ -23,6 +24,7 @@ export type PiSessionClientLike = {
   waitForIdle(timeout?: number): Promise<void>;
   getLastAssistantText(): Promise<string | null>;
   getStderr(): string;
+  respondToExtensionUi?(response: RpcExtensionUIResponse): Promise<void>;
 };
 
 export class PiRpcSessionAdapter implements PiSessionAdapter {
@@ -54,6 +56,14 @@ export class PiRpcSessionAdapter implements PiSessionAdapter {
   async stop(): Promise<void> {
     await this.client?.stop();
     this.client = undefined;
+  }
+
+  async respondToApproval(requestId: string, approved: boolean): Promise<void> {
+    await sendExtensionUiResponse(this.requireClient(), {
+      type: "extension_ui_response",
+      id: requestId,
+      confirmed: approved
+    });
   }
 
   async *send(prompt: string): AsyncIterable<AgentEvent> {
@@ -108,6 +118,21 @@ export class PiRpcSessionAdapter implements PiSessionAdapter {
 
     return this.client;
   }
+}
+
+async function sendExtensionUiResponse(client: PiSessionClientLike, response: RpcExtensionUIResponse): Promise<void> {
+  if (client.respondToExtensionUi) {
+    await client.respondToExtensionUi(response);
+    return;
+  }
+
+  const process = (client as unknown as { process?: { stdin?: { write?: (chunk: string) => void; destroyed?: boolean; writable?: boolean } } }).process;
+  const stdin = process?.stdin;
+  if (!stdin?.write || stdin.destroyed || stdin.writable === false) {
+    throw new Error("Pi RPC client does not expose a writable extension UI response channel.");
+  }
+
+  stdin.write(`${JSON.stringify(response)}\n`);
 }
 
 class AsyncEventQueue<T> implements AsyncIterable<T> {

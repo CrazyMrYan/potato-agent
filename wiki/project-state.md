@@ -33,6 +33,7 @@
 - CLI/TUI 不再给模型输出增加“步骤：”“推理：”“工具开始：”这类固定前缀，模型最终输出按原文展示。
 - TUI 已移除右侧伪滚动条；当前保留 PageUp/PageDown 历史翻页和终端原生滚动，真实滚轮/滚动条需要更完整 TUI 能力或 runtime 支持。
 - 独立 `coding-agent-runtime` 仓库仍作为后续演进方向。
+- 桌面端启动前需要评估通用模型适配层：优先考虑 OpenAI-compatible 配置、LiteLLM、Vercel AI SDK 或 OpenRouter；当前 Pi RPC 路径暂不把这些作为核心依赖。
 
 ## 阶段文档
 
@@ -88,7 +89,17 @@ docs: record validation result
 
 ## 下一步
 
-下一步是完成 M5 trace/diff，并以 runtime capability report 的方式验证 SDK/runtime 权限接管：
+下一步是完成 M6 core 体验闭环，并继续以 CLI/TUI 验证 core 能力是否真实生效：
+
+1. 自动上下文压缩：在 core 里增加上下文预算、压缩触发、压缩摘要和压缩 trace。
+2. 环形上下文额度展示：CLI/TUI 展示当前上下文占用、压缩阈值和最近一次压缩状态。
+3. Markdown 渲染：CLI/TUI 支持模型输出中的标题、列表、代码块、引用、表格的终端友好渲染。
+4. 手动权限继续收敛：拒绝即暂停、写入前 diff 预览和审批 trace 保持可见。
+5. SubAgent 真实委派继续增强：在 CLI/TUI 展示当前 SubAgent、任务状态和技能选择来源。
+6. MCP 从配置检测走向可注入能力：在 Pi RPC 不支持真实注入时明确展示 capability 限制。
+7. 为桌面端前置模型适配评估，但不在 M6 绑定 LiteLLM/AI SDK。
+
+上一阶段 M5 trace/diff 与 SDK/runtime 权限验证仍保留以下长期方向：
 
 1. 完成 `JsonlTraceStore` 和 Git-backed `DiffService`。
 2. 增加 `agent trace` 和 `agent diff`。

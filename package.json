@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "pnpm -r --workspace-concurrency=1 build",
+    "build:npm:cli": "node scripts/build-npm-cli.mjs",
     "dev": "pnpm --filter @coding-agent/cli dev",
     "test": "pnpm build && pnpm -r --workspace-concurrency=1 test",
     "typecheck": "pnpm build && pnpm -r --workspace-concurrency=1 typecheck"
@@ -12,6 +13,7 @@
   "packageManager": "pnpm@10.13.1",
   "devDependencies": {
     "@types/node": "^26.1.0",
+    "esbuild": "0.28.1",
     "tsx": "^4.22.4",
     "typescript": "^6.0.3",
     "vitest": "^4.1.9"

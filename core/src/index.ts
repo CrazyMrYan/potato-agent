@@ -24,6 +24,7 @@ export { AgentSession } from "./session/AgentSession.js";
 export { AgentSessionFactory } from "./session/AgentSessionFactory.js";
 export { DEFAULT_BUILTIN_SKILLS, SkillManager } from "./skills/SkillManager.js";
 export type { SkillManagerDependencies } from "./skills/SkillManager.js";
+export { DEFAULT_SUB_AGENTS, SubAgentManager } from "./subagent/SubAgentManager.js";
 export type { SubAgentConfig, SubAgentConfigOverride } from "./subagent/SubAgentConfig.js";
 export { mergeSubAgentConfig } from "./subagent/SubAgentConfig.js";
 export { ToolBoundary } from "./tools/ToolBoundary.js";

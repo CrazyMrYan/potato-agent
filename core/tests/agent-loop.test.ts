@@ -23,6 +23,28 @@ describe("AgentLoop", () => {
     expect(traceStore.entries.map((entry) => entry.kind)).toContain("diff");
     expect(traceStore.entries.at(-1)).toEqual(expect.objectContaining({ kind: "task.finished" }));
   });
+
+  it("emits and records subagent status around adapter execution", async () => {
+    const traceStore = new MemoryTraceStore();
+    const loop = new AgentLoop(new StaticAdapter(), {
+      traceStore,
+      subAgent: {
+        id: "code-reviewer",
+        name: "Code Reviewer",
+        description: "Review code",
+        enabled: true
+      }
+    });
+    const events: AgentEvent[] = [];
+
+    for await (const event of loop.run(input())) {
+      events.push(event);
+    }
+
+    expect(events.map((event) => event.type)).toEqual(["task.started", "subagent.selected", "subagent.started", "step.started", "subagent.finished", "task.finished"]);
+    expect(traceStore.entries.filter((entry) => entry.kind === "event").map((entry) => entry.event.type)).toContain("subagent.selected");
+    expect(traceStore.entries.filter((entry) => entry.kind === "event").map((entry) => entry.event.type)).toContain("subagent.finished");
+  });
 });
 
 function input(): RunTaskInput {

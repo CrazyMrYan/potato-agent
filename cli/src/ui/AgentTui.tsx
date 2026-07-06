@@ -1,10 +1,15 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { execFile } from "node:child_process";
+import { readdir } from "node:fs/promises";
+import { join, relative } from "node:path";
+import { promisify } from "node:util";
 import { Box, Text, useApp, useInput, useStdout } from "ink";
 import {
   GitDiffService,
   JsonlTraceStore,
   McpConfigChecker,
   SkillManager,
+  SubAgentManager,
   type AgentConfig,
   type AgentMcpServerConfig,
   type AgentPermissionMode,
@@ -12,18 +17,32 @@ import {
   type AgentSession,
   type DiffService,
   type McpCheckResult,
+  type SubAgentConfig,
   type TraceStore
 } from "@coding-agent/core";
+import type { ApprovalRequest } from "@coding-agent/protocol";
+import { formatTraceEntry } from "../commands/trace.js";
 import { EventStreamRenderer, type RenderedAgentEvent, type RenderedAgentEventKind } from "./EventStreamRenderer.js";
+import {
+  applyCompletion,
+  createPromptEditor,
+  detectCompletion,
+  editPrompt,
+  extractSkillMentions,
+  renderPromptWithCursor,
+  type CompletionContext,
+  type PromptEditorState
+} from "./PromptEditor.js";
 
 export type AgentTuiProps = {
   config: AgentConfig;
-  createSession?: (config: AgentConfig) => AgentSession;
+  createSession?: (config: AgentConfig) => AgentSession | Promise<AgentSession>;
   saveConfig?: (config: AgentConfig) => Promise<void>;
   diffService?: DiffService;
   traceStore?: TraceStore;
   skillManager?: SkillManager;
   mcpChecker?: McpConfigChecker;
+  subAgentManager?: SubAgentManager;
 };
 
 export type SkillListProvider = Pick<SkillManager, "list">;
@@ -37,8 +56,11 @@ type Mode =
   | "permission-mode"
   | "skill-list"
   | "skill-install"
+  | "file-completion"
+  | "skill-completion"
   | "mcp-menu"
-  | "agent-menu";
+  | "agent-menu"
+  | "approval";
 
 const providerOptions = ["deepseek", "openai", "anthropic", "gemini", "mistral"] as const;
 const modelOptions: Record<string, string[]> = {
@@ -61,21 +83,28 @@ const commandOptions = [
   { command: "/exit", label: "/exit", description: "退出 TUI" }
 ];
 
-const permissionOptions: Array<{ label: string; mode: AgentPermissionMode }> = [
-  { label: "manual", mode: "confirm" },
-  { label: "auto", mode: "bypass" },
-  { label: "readonly", mode: "readonly" }
+const permissionOptions: Array<{ label: string; description: string; mode: AgentPermissionMode }> = [
+  { label: "manual", description: "确认后允许写入/命令", mode: "confirm" },
+  { label: "auto", description: "自动执行，结束看 diff", mode: "bypass" },
+  { label: "readonly", description: "禁止写入和变更命令", mode: "readonly" }
 ];
+
+const execFileAsync = promisify(execFile);
 
 export function AgentTui(props: AgentTuiProps): React.ReactElement {
   const app = useApp();
   const stdout = useStdout();
   const [config, setConfig] = useState<AgentConfig>({ ...props.config });
   const [busy, setBusy] = useState(false);
-  const [draft, setDraft] = useState("");
+  const [editor, setEditor] = useState<PromptEditorState>(() => createPromptEditor());
+  const [completionContext, setCompletionContext] = useState<CompletionContext | undefined>();
+  const [fileCandidates, setFileCandidates] = useState<string[]>([]);
+  const [fileCandidatesLoading, setFileCandidatesLoading] = useState(false);
+  const [skillCandidates, setSkillCandidates] = useState<string[]>([]);
+  const [skillCandidatesLoading, setSkillCandidatesLoading] = useState(false);
   const [scrollOffset, setScrollOffset] = useState(0);
   const [mode, setMode] = useState<Mode>("chat");
-  const [selectedCommand, setSelectedCommand] = useState(0);
+  const [selectedCompletion, setSelectedCompletion] = useState(0);
   const [selectedProvider, setSelectedProvider] = useState(() => {
     const index = providerOptions.findIndex((provider) => provider === props.config.provider);
     return index >= 0 ? index : 0;
@@ -86,6 +115,9 @@ export function AgentTui(props: AgentTuiProps): React.ReactElement {
   const [skillInstallInput, setSkillInstallInput] = useState("");
   const [skillItems, setSkillItems] = useState<AgentSkillConfig[]>([]);
   const [mcpResults, setMcpResults] = useState<McpCheckResult[]>([]);
+  const [subAgentItems, setSubAgentItems] = useState<SubAgentConfig[]>([]);
+  const [selectedSubAgent, setSelectedSubAgent] = useState(0);
+  const [pendingApproval, setPendingApproval] = useState<ApprovalRequest | undefined>();
   const [pendingApiKey, setPendingApiKey] = useState(props.config.apiKey ?? "");
   const [events, setEvents] = useState<RenderedAgentEvent[]>([
     { kind: "muted", text: "准备就绪。输入任务开始，输入 / 打开命令菜单。" }
@@ -95,6 +127,7 @@ export function AgentTui(props: AgentTuiProps): React.ReactElement {
   const permissionMode = config.permissionPolicy?.mode ?? "confirm";
   const skillManager = props.skillManager ?? new SkillManager(workspacePath);
   const mcpChecker = props.mcpChecker ?? new McpConfigChecker({ adapter: "rpc" });
+  const subAgentManager = props.subAgentManager ?? new SubAgentManager();
 
   const visibleEventCapacity = Math.max(8, Math.min(24, stdout.stdout.rows - 9));
   const maxScrollOffset = Math.max(events.length - visibleEventCapacity, 0);
@@ -103,6 +136,29 @@ export function AgentTui(props: AgentTuiProps): React.ReactElement {
     const start = Math.max(end - visibleEventCapacity, 0);
     return events.slice(start, end);
   }, [events, scrollOffset, visibleEventCapacity]);
+  const commandMatches = useMemo(() => {
+    if (completionContext?.type !== "command") {
+      return commandOptions;
+    }
+    const query = completionContext.query.toLowerCase();
+    return commandOptions
+      .filter((option) => fuzzyMatch(option.command.toLowerCase(), query))
+      .sort((left, right) => completionRank(left.command.toLowerCase(), query) - completionRank(right.command.toLowerCase(), query));
+  }, [completionContext]);
+  const fileMatches = useMemo(() => {
+    if (completionContext?.type !== "file") {
+      return [];
+    }
+    const query = completionContext.query.toLowerCase();
+    return filterCompletionCandidates(fileCandidates, query, 12);
+  }, [completionContext, fileCandidates]);
+  const skillMatches = useMemo(() => {
+    if (completionContext?.type !== "skill") {
+      return [];
+    }
+    const query = completionContext.query.toLowerCase();
+    return filterCompletionCandidates(skillCandidates, query, 12);
+  }, [completionContext, skillCandidates]);
 
   const appendEvent = useCallback((event: RenderedAgentEvent) => {
     setEvents((current) => [...current, event]);
@@ -118,6 +174,26 @@ export function AgentTui(props: AgentTuiProps): React.ReactElement {
     setScrollOffset(0);
   }, []);
 
+  const updateEditor = useCallback((nextEditor: PromptEditorState) => {
+    setEditor(nextEditor);
+    const nextCompletion = detectCompletion(nextEditor);
+    setCompletionContext(nextCompletion);
+    setSelectedCompletion(0);
+    if (nextCompletion?.type === "command") {
+      setMode("command");
+      return;
+    }
+    if (nextCompletion?.type === "file") {
+      setMode("file-completion");
+      return;
+    }
+    if (nextCompletion?.type === "skill") {
+      setMode("skill-completion");
+      return;
+    }
+    setMode((current) => (current === "command" || current === "file-completion" || current === "skill-completion" ? "chat" : current));
+  }, []);
+
   const stopActiveSession = useCallback(async () => {
     if (!sessionRef.current) {
       return;
@@ -127,7 +203,7 @@ export function AgentTui(props: AgentTuiProps): React.ReactElement {
     sessionRef.current = undefined;
   }, []);
 
-  const buildRuntimeConfig = useCallback(() => buildRuntimeSessionConfig(config, skillManager), [config, skillManager]);
+  const buildRuntimeConfig = useCallback(() => buildRuntimeSessionConfig(config, skillManager, subAgentManager), [config, skillManager, subAgentManager]);
 
   const enterModelProviderMode = useCallback(() => {
     const currentIndex = providerOptions.findIndex((provider) => provider === config.provider);
@@ -219,6 +295,29 @@ export function AgentTui(props: AgentTuiProps): React.ReactElement {
     setMode("mcp-menu");
   }, [config.mcpServers, mcpChecker]);
 
+  const openAgentMenu = useCallback(async () => {
+    const agents = await subAgentManager.list();
+    const activeId = config.activeSubAgentId ?? "default";
+    const index = agents.findIndex((agent) => agent.id === activeId);
+    setSubAgentItems(agents);
+    setSelectedSubAgent(index >= 0 ? index : 0);
+    setMode("agent-menu");
+  }, [config.activeSubAgentId, subAgentManager]);
+
+  const selectSubAgent = useCallback(async () => {
+    const agent = subAgentItems[selectedSubAgent];
+    if (!agent) {
+      return;
+    }
+    await subAgentManager.select(agent.id);
+    const nextConfig = { ...config, activeSubAgentId: agent.id, subAgents: subAgentItems };
+    setConfig(nextConfig);
+    await stopActiveSession();
+    await props.saveConfig?.(nextConfig);
+    appendEvent({ kind: "success", text: `SubAgent selected: ${agent.name}` });
+    setMode("chat");
+  }, [appendEvent, config, props, selectedSubAgent, stopActiveSession, subAgentItems, subAgentManager]);
+
   const showDiff = useCallback(async () => {
     const diffService = props.diffService ?? new GitDiffService();
     const changeSet = await diffService.getChangeSet(workspacePath);
@@ -227,7 +326,12 @@ export function AgentTui(props: AgentTuiProps): React.ReactElement {
       return;
     }
     appendEvent({ kind: "diff", text: `diff: ${changeSet.files.length} 个文件变更。` });
-    appendEvents(changeSet.files.map((file) => ({ kind: "diff", text: `${file.status} ${file.path}` })));
+    appendEvents(
+      changeSet.files.flatMap((file) => [
+        { kind: "diff" as const, text: `${file.status} ${file.path}` },
+        ...(file.diff ? file.diff.split("\n").slice(0, 80).map((line) => ({ kind: "diff" as const, text: line })) : [])
+      ])
+    );
   }, [appendEvent, appendEvents, props.diffService, workspacePath]);
 
   const showTrace = useCallback(async () => {
@@ -237,13 +341,10 @@ export function AgentTui(props: AgentTuiProps): React.ReactElement {
       appendEvent({ kind: "muted", text: "trace: 还没有执行过 agent 任务。" });
       return;
     }
-    appendEvent({ kind: "muted", text: `trace: 最近 ${Math.min(traces.length, 5)} 条。` });
-    appendEvents(
-      traces.slice(0, 5).map((trace) => ({
-        kind: "muted",
-        text: `${trace.taskId} ${trace.entries} entries ${trace.updatedAt}`
-      }))
-    );
+    const latest = traces[0];
+    appendEvent({ kind: "muted", text: `trace: 最新 ${latest.taskId}，${latest.entries} entries。` });
+    const entries = await traceStore.read(latest.taskId);
+    appendEvents(entries.slice(-20).map((entry) => ({ kind: "muted", text: formatTraceEntry(entry) })));
   }, [appendEvent, appendEvents, props.traceStore, workspacePath]);
 
   const sendPrompt = useCallback(
@@ -257,8 +358,8 @@ export function AgentTui(props: AgentTuiProps): React.ReactElement {
       appendEvent({ kind: "user", text: prompt });
 
       try {
-        const runtimeConfig = await buildRuntimeConfig();
-        const activeSession = sessionRef.current ?? props.createSession?.(runtimeConfig);
+        const runtimeConfig = applyInlineSkillMentions(await buildRuntimeConfig(), prompt);
+        const activeSession = sessionRef.current ?? (await props.createSession?.(runtimeConfig));
         if (!activeSession) {
           appendEvent({ kind: "error", text: "Agent 会话创建失败：缺少 core session factory。" });
           return;
@@ -271,6 +372,10 @@ export function AgentTui(props: AgentTuiProps): React.ReactElement {
 
         const renderer = new EventStreamRenderer({ colors: false });
         for await (const event of activeSession.send(prompt)) {
+          if (event.type === "approval.requested") {
+            setPendingApproval(event.request);
+            setMode("approval");
+          }
           appendEvents(renderer.renderEvent(event));
         }
         appendEvents(renderer.flushEvents());
@@ -282,6 +387,63 @@ export function AgentTui(props: AgentTuiProps): React.ReactElement {
     },
     [appendEvent, appendEvents, buildRuntimeConfig, busy, props]
   );
+
+  const respondToApproval = useCallback(
+    async (approved: boolean) => {
+      if (!pendingApproval) {
+        return;
+      }
+
+      try {
+        if (approved) {
+          await sessionRef.current?.approve(pendingApproval.id, true);
+        } else if (sessionRef.current && "rejectAndPause" in sessionRef.current && typeof sessionRef.current.rejectAndPause === "function") {
+          await sessionRef.current.rejectAndPause(pendingApproval.id);
+          sessionRef.current = undefined;
+        } else {
+          await sessionRef.current?.approve(pendingApproval.id, false);
+          await sessionRef.current?.stop();
+          sessionRef.current = undefined;
+        }
+        appendEvent({
+          kind: approved ? "success" : "warning",
+          text: approved ? `已允许：${pendingApproval.title}` : `已暂停：${pendingApproval.title}`
+        });
+      } catch (error) {
+        appendEvent({ kind: "error", text: `审批响应失败：${error instanceof Error ? error.message : String(error)}` });
+      } finally {
+        setPendingApproval(undefined);
+        if (!approved) {
+          setBusy(false);
+        }
+        setMode("chat");
+      }
+    },
+    [appendEvent, pendingApproval]
+  );
+
+  const pauseActiveTask = useCallback(async () => {
+    if (pendingApproval) {
+      await respondToApproval(false);
+      return;
+    }
+
+    if (!sessionRef.current) {
+      appendEvent({ kind: "muted", text: "当前没有正在运行的任务。" });
+      return;
+    }
+
+    try {
+      await sessionRef.current.stop();
+      sessionRef.current = undefined;
+      setBusy(false);
+      setPendingApproval(undefined);
+      setMode("chat");
+      appendEvent({ kind: "warning", text: "当前任务已暂停。" });
+    } catch (error) {
+      appendEvent({ kind: "error", text: `暂停失败：${error instanceof Error ? error.message : String(error)}` });
+    }
+  }, [appendEvent, pendingApproval, respondToApproval]);
 
   const handlePrompt = useCallback(
     async (prompt: string) => {
@@ -321,7 +483,7 @@ export function AgentTui(props: AgentTuiProps): React.ReactElement {
       }
 
       if (prompt === "/agent" || prompt === "/subagent") {
-        setMode("agent-menu");
+        await openAgentMenu();
         return;
       }
 
@@ -337,7 +499,7 @@ export function AgentTui(props: AgentTuiProps): React.ReactElement {
 
       await sendPrompt(prompt);
     },
-    [app, appendEvent, enterModelProviderMode, openMcpMenu, openPermissionMode, openSkillList, sendPrompt, showDiff, showTrace, workspacePath]
+    [app, appendEvent, enterModelProviderMode, openAgentMenu, openMcpMenu, openPermissionMode, openSkillList, sendPrompt, showDiff, showTrace, workspacePath]
   );
 
   useEffect(() => {
@@ -346,10 +508,61 @@ export function AgentTui(props: AgentTuiProps): React.ReactElement {
     };
   }, []);
 
+  useEffect(() => {
+    if (completionContext?.type !== "file") {
+      setFileCandidatesLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setFileCandidatesLoading(true);
+    void listWorkspaceFiles(workspacePath).then((files) => {
+      if (!cancelled) {
+        setFileCandidates(files);
+        setFileCandidatesLoading(false);
+      }
+    }).catch(() => {
+      if (!cancelled) {
+        setFileCandidates([]);
+        setFileCandidatesLoading(false);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [completionContext?.type, workspacePath]);
+
+  useEffect(() => {
+    if (completionContext?.type !== "skill") {
+      setSkillCandidatesLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setSkillCandidatesLoading(true);
+    void skillManager.list().then((skills) => {
+      if (!cancelled) {
+        setSkillCandidates(skills.map((skill) => skill.id ?? skill.name ?? skill.path).filter(Boolean));
+        setSkillCandidatesLoading(false);
+      }
+    }).catch(() => {
+      if (!cancelled) {
+        setSkillCandidates([]);
+        setSkillCandidatesLoading(false);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [completionContext?.type, skillManager]);
+
   useInput((input, key) => {
     if (key.ctrl && input === "c") {
       void sessionRef.current?.stop();
       app.exit();
+      return;
+    }
+
+    if (key.ctrl && input === "p") {
+      void pauseActiveTask();
       return;
     }
 
@@ -368,24 +581,138 @@ export function AgentTui(props: AgentTuiProps): React.ReactElement {
       return;
     }
 
-    if (mode === "chat" && key.upArrow && draft.length === 0) {
+    if (mode === "chat" && key.upArrow && editor.text.length === 0) {
       setScrollOffset((value) => Math.min(value + 1, maxScrollOffset));
       return;
     }
 
-    if (mode === "chat" && key.downArrow && draft.length === 0) {
+    if (mode === "chat" && key.downArrow && editor.text.length === 0) {
       setScrollOffset((value) => Math.max(value - 1, 0));
       return;
     }
 
-    if ((key.ctrl && input === "m") || (mode === "chat" && draft === "/model" && key.return)) {
-      setDraft("");
+    if (mode === "chat" && editor.text === "/model" && (key.return || isReturnInput(input))) {
+      updateEditor(createPromptEditor());
       enterModelProviderMode();
       return;
     }
 
     if (mode === "command") {
-      handleCommandInput(key, setDraft, setMode, setSelectedCommand, handlePrompt);
+      if (isReturnInput(input) && commandMatches[selectedCompletion]) {
+        const option = commandMatches[selectedCompletion];
+        updateEditor(createPromptEditor());
+        setMode("chat");
+        void handlePrompt(option.command);
+        return;
+      }
+      if (key.return || key.escape || key.upArrow || key.downArrow) {
+        handleCompletionInput({
+          key,
+          matches: commandMatches,
+          selectedCompletion,
+          setSelectedCompletion,
+          applySelected: () => {
+            const option = commandMatches[selectedCompletion];
+            if (!option) return;
+            updateEditor(createPromptEditor());
+            setMode("chat");
+            void handlePrompt(option.command);
+          },
+          cancel: () => {
+            setMode("chat");
+            setCompletionContext(undefined);
+          }
+        });
+        return;
+      }
+      if (key.backspace || key.delete || input || key.leftArrow || key.rightArrow) {
+        if (key.backspace || key.delete) updateEditor(editPrompt(editor, { type: key.backspace ? "backspace" : "delete" }));
+        else if (key.leftArrow) updateEditor(editPrompt(editor, { type: "left" }));
+        else if (key.rightArrow) updateEditor(editPrompt(editor, { type: "right" }));
+        else if (input) updateEditor(editPrompt(editor, { type: "insert", value: input }));
+        return;
+      }
+      return;
+    }
+
+    if (mode === "file-completion") {
+      if (isReturnInput(input) && fileMatches[selectedCompletion]) {
+        updateEditor(applyCompletion(editor, { type: "file", value: fileMatches[selectedCompletion] }));
+        setMode("chat");
+        return;
+      }
+      if (key.return || key.escape || key.upArrow || key.downArrow) {
+        handleValueCompletionInput({
+          key,
+          matches: fileMatches,
+          selectedCompletion,
+          setSelectedCompletion,
+          applySelected: () => {
+            const value = fileMatches[selectedCompletion];
+            if (!value) return;
+            updateEditor(applyCompletion(editor, { type: "file", value }));
+            setMode("chat");
+          },
+          cancel: () => {
+            setMode("chat");
+            setCompletionContext(undefined);
+          }
+        });
+        return;
+      }
+      if (key.backspace || key.delete || input || key.leftArrow || key.rightArrow) {
+        if (key.backspace || key.delete) updateEditor(editPrompt(editor, { type: key.backspace ? "backspace" : "delete" }));
+        else if (key.leftArrow) updateEditor(editPrompt(editor, { type: "left" }));
+        else if (key.rightArrow) updateEditor(editPrompt(editor, { type: "right" }));
+        else if (input) updateEditor(editPrompt(editor, { type: "insert", value: input }));
+        return;
+      }
+      return;
+    }
+
+    if (mode === "skill-completion") {
+      if (isReturnInput(input) && skillMatches[selectedCompletion]) {
+        updateEditor(applyCompletion(editor, { type: "skill", value: skillMatches[selectedCompletion] }));
+        setMode("chat");
+        return;
+      }
+      if (key.return || key.escape || key.upArrow || key.downArrow) {
+        handleValueCompletionInput({
+          key,
+          matches: skillMatches,
+          selectedCompletion,
+          setSelectedCompletion,
+          applySelected: () => {
+            const value = skillMatches[selectedCompletion];
+            if (!value) return;
+            updateEditor(applyCompletion(editor, { type: "skill", value }));
+            setMode("chat");
+          },
+          cancel: () => {
+            setMode("chat");
+            setCompletionContext(undefined);
+          }
+        });
+        return;
+      }
+      if (key.backspace || key.delete || input || key.leftArrow || key.rightArrow) {
+        if (key.backspace || key.delete) updateEditor(editPrompt(editor, { type: key.backspace ? "backspace" : "delete" }));
+        else if (key.leftArrow) updateEditor(editPrompt(editor, { type: "left" }));
+        else if (key.rightArrow) updateEditor(editPrompt(editor, { type: "right" }));
+        else if (input) updateEditor(editPrompt(editor, { type: "insert", value: input }));
+        return;
+      }
+      return;
+    }
+
+    if (mode === "approval") {
+      if (key.escape || input === "n" || input === "N" || input === "p" || input === "P") {
+        void respondToApproval(false);
+        return;
+      }
+      if (key.return || input === "y" || input === "Y") {
+        void respondToApproval(true);
+      }
       return;
     }
 
@@ -397,50 +724,61 @@ export function AgentTui(props: AgentTuiProps): React.ReactElement {
         selectedProvider,
         selectedPermission,
         selectedSkill,
+        selectedSubAgent,
         skillItems,
+        subAgentItems,
         setMode,
         setSelectedProvider,
         setSelectedModel,
         setPendingApiKey,
         setSelectedPermission,
         setSelectedSkill,
+        setSelectedSubAgent,
         setSkillInstallInput,
         saveModelConfig,
         savePermissionMode,
         toggleSelectedSkill,
         installSkill,
-        openSkillList
+        openSkillList,
+        selectSubAgent
       });
       return;
     }
 
-    if (key.return) {
-      const prompt = draft.trim();
-      setDraft("");
+    if (key.return || isReturnInput(input)) {
+      const prompt = editor.text.trim();
+      updateEditor(createPromptEditor());
       void handlePrompt(prompt);
       return;
     }
 
     if (key.backspace || key.delete) {
-      setDraft((value) => {
-        const next = value.slice(0, -1);
-        if (!next.startsWith("/")) {
-          setMode("chat");
-        }
-        return next;
-      });
+      updateEditor(editPrompt(editor, { type: key.backspace ? "backspace" : "delete" }));
+      return;
+    }
+
+    if (key.leftArrow) {
+      updateEditor(editPrompt(editor, { type: "left" }));
+      return;
+    }
+
+    if (key.rightArrow) {
+      updateEditor(editPrompt(editor, { type: "right" }));
+      return;
+    }
+
+    if (key.upArrow) {
+      updateEditor(editPrompt(editor, { type: "home" }));
+      return;
+    }
+
+    if (key.downArrow) {
+      updateEditor(editPrompt(editor, { type: "end" }));
       return;
     }
 
     if (input) {
-      setDraft((value) => {
-        const next = value + input;
-        if (next.startsWith("/")) {
-          setMode("command");
-          setSelectedCommand(0);
-        }
-        return next;
-      });
+      updateEditor(editPrompt(editor, { type: "insert", value: input }));
     }
   });
 
@@ -455,10 +793,11 @@ export function AgentTui(props: AgentTuiProps): React.ReactElement {
           <Text dimColor>model <Text color="white">{formatModel(config)}</Text></Text>
           <Text dimColor>workspace <Text color="white">{workspacePath}</Text></Text>
           <Text dimColor>mode <Text color="white">{formatPermissionMode(permissionMode)}</Text></Text>
+          <Text dimColor>subagent <Text color="white">{config.activeSubAgentId ?? "default"}</Text></Text>
         </Box>
         <Box gap={2} flexWrap="wrap">
           <Text dimColor>commands <Text color="white">/model /workspace /diff /trace /mode /skill /mcp /agent /exit</Text></Text>
-          <Text dimColor>keys <Text color="white">Ctrl+M PageUp/PageDown Ctrl+C</Text></Text>
+          <Text dimColor>keys <Text color="white">Ctrl+P PageUp/PageDown Ctrl+C</Text></Text>
         </Box>
       </Box>
 
@@ -471,73 +810,125 @@ export function AgentTui(props: AgentTuiProps): React.ReactElement {
         {visibleEvents.map((event, index) => (
           <EventLine event={event} key={`${index}-${event.kind}-${event.text}`} />
         ))}
-        <CommandMenu mode={mode} selectedCommand={selectedCommand} />
+        <CommandMenu mode={mode} selectedCommand={selectedCompletion} commands={commandMatches} />
+        <ValueCompletionMenu
+          title="FILES"
+          mode={mode}
+          expectedMode="file-completion"
+          selected={selectedCompletion}
+          values={fileMatches}
+          loading={fileCandidatesLoading}
+          query={completionContext?.type === "file" ? completionContext.query : ""}
+          loadedCount={fileCandidates.length}
+        />
+        <ValueCompletionMenu
+          title="SKILLS"
+          mode={mode}
+          expectedMode="skill-completion"
+          selected={selectedCompletion}
+          values={skillMatches}
+          loading={skillCandidatesLoading}
+          query={completionContext?.type === "skill" ? completionContext.query : ""}
+          loadedCount={skillCandidates.length}
+        />
         <ModelPicker mode={mode} selectedProvider={selectedProvider} selectedModel={selectedModel} pendingApiKey={pendingApiKey} />
         <PermissionPicker mode={mode} selectedPermission={selectedPermission} />
         <SkillList mode={mode} skills={skillItems} selectedSkill={selectedSkill} skillInstallInput={skillInstallInput} />
         <McpMenu mode={mode} servers={config.mcpServers ?? []} results={mcpResults} />
-        <AgentMenu mode={mode} />
+        <AgentMenu mode={mode} agents={subAgentItems} selectedSubAgent={selectedSubAgent} activeSubAgentId={config.activeSubAgentId ?? "default"} />
+        <ApprovalPrompt mode={mode} request={pendingApproval} />
       </Box>
 
       <Box marginTop={1} borderStyle="single" borderColor={mode === "chat" ? "gray" : "cyan"} paddingX={1}>
-        <Text color="cyan">input </Text>
-        <Text color={mode === "chat" || mode === "command" ? "white" : "cyan"}>
-          {inputLabel(mode)} {mode === "chat" || mode === "command" ? draft : secondaryPrompt(mode, skillInstallInput)}
-        </Text>
+        {isPromptEditingMode(mode) ? <PromptLine editor={editor} /> : <Text color="cyan">{secondaryPrompt(mode, skillInstallInput)}</Text>}
       </Box>
     </Box>
   );
 }
 
-export async function buildRuntimeSessionConfig(config: AgentConfig, skillManager: SkillListProvider): Promise<AgentConfig> {
+export async function buildRuntimeSessionConfig(
+  config: AgentConfig,
+  skillManager: SkillListProvider,
+  subAgentManager?: Pick<SubAgentManager, "applyActive">
+): Promise<AgentConfig> {
   const skills = await skillManager.list();
-  return {
+  const runtimeConfig = {
     ...config,
     skills
   };
+  return subAgentManager ? subAgentManager.applyActive(runtimeConfig) : runtimeConfig;
 }
 
-function handleCommandInput(
-  key: { upArrow: boolean; downArrow: boolean; return: boolean; escape: boolean; backspace: boolean; delete: boolean },
-  setDraft: React.Dispatch<React.SetStateAction<string>>,
-  setMode: React.Dispatch<React.SetStateAction<Mode>>,
-  setSelectedCommand: React.Dispatch<React.SetStateAction<number>>,
-  handlePrompt: (prompt: string) => Promise<void>
-): void {
+export function applyInlineSkillMentions(config: AgentConfig, prompt: string): AgentConfig {
+  const mentions = extractSkillMentions(prompt);
+  if (mentions.length === 0 || !config.skills) {
+    return config;
+  }
+
+  const wanted = new Set(mentions);
+  return {
+    ...config,
+    skills: config.skills.map((skill) => {
+      const id = skill.id ?? skill.name ?? skill.path;
+      return wanted.has(id) ? { ...skill, enabled: true } : skill;
+    }),
+    appendSystemPrompt: [...(config.appendSystemPrompt ?? []), `Inline skills for this turn: ${mentions.join(", ")}`]
+  };
+}
+
+function handleCompletionInput(options: {
+  key: { upArrow: boolean; downArrow: boolean; return: boolean; escape: boolean; backspace: boolean; delete: boolean };
+  matches: Array<{ command: string; label: string; description: string }>;
+  selectedCompletion: number;
+  setSelectedCompletion: React.Dispatch<React.SetStateAction<number>>;
+  applySelected: () => void;
+  cancel: () => void;
+}): void {
+  const { key, matches, selectedCompletion, setSelectedCompletion, applySelected, cancel } = options;
   if (key.escape) {
-    setDraft("");
-    setMode("chat");
+    cancel();
     return;
   }
 
   if (key.upArrow) {
-    setSelectedCommand((value) => wrap(value - 1, commandOptions.length));
+    setSelectedCompletion((value) => wrap(value - 1, Math.max(matches.length, 1)));
     return;
   }
 
   if (key.downArrow) {
-    setSelectedCommand((value) => wrap(value + 1, commandOptions.length));
+    setSelectedCompletion((value) => wrap(value + 1, Math.max(matches.length, 1)));
     return;
   }
 
-  if (key.backspace || key.delete) {
-    setDraft((value) => {
-      const next = value.slice(0, -1);
-      if (!next.startsWith("/")) {
-        setMode("chat");
-      }
-      return next;
-    });
+  if (key.return && matches[selectedCompletion]) {
+    applySelected();
     return;
   }
+}
 
-  if (key.return) {
-    setSelectedCommand((value) => {
-      setDraft("");
-      setMode("chat");
-      void handlePrompt(commandOptions[value].command);
-      return value;
-    });
+function handleValueCompletionInput(options: {
+  key: { upArrow: boolean; downArrow: boolean; return: boolean; escape: boolean; backspace: boolean; delete: boolean };
+  matches: string[];
+  selectedCompletion: number;
+  setSelectedCompletion: React.Dispatch<React.SetStateAction<number>>;
+  applySelected: () => void;
+  cancel: () => void;
+}): void {
+  const { key, matches, selectedCompletion, setSelectedCompletion, applySelected, cancel } = options;
+  if (key.escape) {
+    cancel();
+    return;
+  }
+  if (key.upArrow) {
+    setSelectedCompletion((value) => wrap(value - 1, Math.max(matches.length, 1)));
+    return;
+  }
+  if (key.downArrow) {
+    setSelectedCompletion((value) => wrap(value + 1, Math.max(matches.length, 1)));
+    return;
+  }
+  if (key.return && matches[selectedCompletion]) {
+    applySelected();
   }
 }
 
@@ -548,19 +939,23 @@ type SecondaryInputOptions = {
   selectedProvider: number;
   selectedPermission: number;
   selectedSkill: number;
+  selectedSubAgent: number;
   skillItems: AgentSkillConfig[];
+  subAgentItems: SubAgentConfig[];
   setMode: React.Dispatch<React.SetStateAction<Mode>>;
   setSelectedProvider: React.Dispatch<React.SetStateAction<number>>;
   setSelectedModel: React.Dispatch<React.SetStateAction<number>>;
   setPendingApiKey: React.Dispatch<React.SetStateAction<string>>;
   setSelectedPermission: React.Dispatch<React.SetStateAction<number>>;
   setSelectedSkill: React.Dispatch<React.SetStateAction<number>>;
+  setSelectedSubAgent: React.Dispatch<React.SetStateAction<number>>;
   setSkillInstallInput: React.Dispatch<React.SetStateAction<string>>;
   saveModelConfig: () => Promise<void>;
   savePermissionMode: (mode: AgentPermissionMode) => Promise<void>;
   toggleSelectedSkill: () => Promise<void>;
   installSkill: () => Promise<void>;
   openSkillList: () => Promise<void>;
+  selectSubAgent: () => Promise<void>;
 };
 
 function handleSecondaryInput(options: SecondaryInputOptions): void {
@@ -571,19 +966,23 @@ function handleSecondaryInput(options: SecondaryInputOptions): void {
     selectedProvider,
     selectedPermission,
     selectedSkill,
+    selectedSubAgent,
     skillItems,
+    subAgentItems,
     setMode,
     setSelectedProvider,
     setSelectedModel,
     setPendingApiKey,
     setSelectedPermission,
     setSelectedSkill,
+    setSelectedSubAgent,
     setSkillInstallInput,
     saveModelConfig,
     savePermissionMode,
     toggleSelectedSkill,
     installSkill,
-    openSkillList
+    openSkillList,
+    selectSubAgent
   } = options;
 
   if (key.escape) {
@@ -693,7 +1092,22 @@ function handleSecondaryInput(options: SecondaryInputOptions): void {
     return;
   }
 
-  if (mode === "mcp-menu" || mode === "agent-menu") {
+  if (mode === "agent-menu") {
+    if (key.upArrow) {
+      setSelectedSubAgent((value) => wrap(value - 1, Math.max(subAgentItems.length, 1)));
+      return;
+    }
+    if (key.downArrow) {
+      setSelectedSubAgent((value) => wrap(value + 1, Math.max(subAgentItems.length, 1)));
+      return;
+    }
+    if (key.return) {
+      void selectSubAgent();
+    }
+    return;
+  }
+
+  if (mode === "mcp-menu") {
     if (key.return) {
       setMode("chat");
     }
@@ -704,7 +1118,28 @@ function EventLine({ event }: { event: RenderedAgentEvent }): React.ReactElement
   return <Text {...eventTextStyle(event.kind)} wrap="wrap">{event.text}</Text>;
 }
 
-function CommandMenu({ mode, selectedCommand }: { mode: Mode; selectedCommand: number }): React.ReactElement | null {
+function PromptLine({ editor }: { editor: PromptEditorState }): React.ReactElement {
+  const segments = renderPromptWithCursor(editor);
+  return (
+    <Text wrap="truncate">
+      {segments.map((segment, index) => (
+        <Text color={segment.kind === "file" ? "cyan" : segment.kind === "skill" ? "magenta" : "white"} key={`${index}-${segment.kind}-${segment.text}`}>
+          {segment.text}
+        </Text>
+      ))}
+    </Text>
+  );
+}
+
+function CommandMenu({
+  mode,
+  selectedCommand,
+  commands
+}: {
+  mode: Mode;
+  selectedCommand: number;
+  commands: Array<{ command: string; label: string; description: string }>;
+}): React.ReactElement | null {
   if (mode !== "command") {
     return null;
   }
@@ -712,11 +1147,51 @@ function CommandMenu({ mode, selectedCommand }: { mode: Mode; selectedCommand: n
   return (
     <>
       <Text dimColor>COMMANDS</Text>
-      {commandOptions.map((option, index) => (
+      {commands.map((option, index) => (
         <Text color={index === selectedCommand ? "green" : undefined} key={option.command}>
           {index === selectedCommand ? ">" : " "} {option.label}  {option.description}
         </Text>
       ))}
+    </>
+  );
+}
+
+function ValueCompletionMenu({
+  title,
+  mode,
+  expectedMode,
+  selected,
+  values,
+  loading,
+  query,
+  loadedCount
+}: {
+  title: string;
+  mode: Mode;
+  expectedMode: Mode;
+  selected: number;
+  values: string[];
+  loading: boolean;
+  query: string;
+  loadedCount: number;
+}): React.ReactElement | null {
+  if (mode !== expectedMode) {
+    return null;
+  }
+  return (
+    <>
+      <Text dimColor>{title}  query "{query}" · {loadedCount} loaded</Text>
+      {loading ? (
+        <Text dimColor>  loading...</Text>
+      ) : values.length === 0 ? (
+        <Text dimColor>  no matches</Text>
+      ) : (
+        values.map((value, index) => (
+          <Text color={index === selected ? "green" : undefined} key={value}>
+            {index === selected ? ">" : " "} {value}
+          </Text>
+        ))
+      )}
     </>
   );
 }
@@ -775,7 +1250,7 @@ function PermissionPicker({ mode, selectedPermission }: { mode: Mode; selectedPe
       <Text dimColor>MODE</Text>
       {permissionOptions.map((option, index) => (
         <Text color={index === selectedPermission ? "green" : undefined} key={option.label}>
-          {index === selectedPermission ? ">" : " "} {option.label}
+          {index === selectedPermission ? ">" : " "} {option.label}  {option.description}
         </Text>
       ))}
     </>
@@ -839,12 +1314,31 @@ function McpMenu({
   );
 }
 
-function AgentMenu({ mode }: { mode: Mode }): React.ReactElement | null {
+function AgentMenu({
+  mode,
+  agents,
+  selectedSubAgent,
+  activeSubAgentId
+}: {
+  mode: Mode;
+  agents: SubAgentConfig[];
+  selectedSubAgent: number;
+  activeSubAgentId: string;
+}): React.ReactElement | null {
   if (mode !== "agent-menu") {
     return null;
   }
 
-  return <Text dimColor>SubAgent: default agent selected. Custom SubAgent selection will use core SubAgentConfig.</Text>;
+  return (
+    <>
+      <Text dimColor>SUBAGENTS  Enter select · Esc back</Text>
+      {agents.map((agent, index) => (
+        <Text color={index === selectedSubAgent ? "green" : undefined} key={agent.id}>
+          {index === selectedSubAgent ? ">" : " "} {agent.id === activeSubAgentId ? "*" : " "} {agent.name}  {agent.description}
+        </Text>
+      ))}
+    </>
+  );
 }
 
 function eventTextStyle(kind: RenderedAgentEventKind): { color?: string; dimColor?: boolean; bold?: boolean } {
@@ -861,6 +1355,47 @@ function eventTextStyle(kind: RenderedAgentEventKind): { color?: string; dimColo
     muted: { color: "gray", dimColor: true }
   };
   return styles[kind];
+}
+
+function ApprovalPrompt({ mode, request }: { mode: Mode; request: ApprovalRequest | undefined }): React.ReactElement | null {
+  if (mode !== "approval" || !request) {
+    return null;
+  }
+
+  return (
+    <>
+      <Text color="yellow">APPROVAL REQUIRED</Text>
+      <Text>{request.title}</Text>
+      {request.detail ? <ApprovalDetail detail={request.detail} /> : null}
+      <Text dimColor>Enter/y allow · n/Esc pause task</Text>
+    </>
+  );
+}
+
+function ApprovalDetail({ detail }: { detail: string }): React.ReactElement {
+  return (
+    <>
+      {detail.split("\n").slice(0, 120).map((line, index) => (
+        <Text {...approvalDetailStyle(line)} key={`${index}-${line}`}>
+          {line}
+        </Text>
+      ))}
+      {detail.split("\n").length > 120 ? <Text dimColor>... preview truncated ...</Text> : null}
+    </>
+  );
+}
+
+function approvalDetailStyle(line: string): { color?: string; dimColor?: boolean } {
+  if (line.startsWith("+++ ") || line.startsWith("--- ") || line.startsWith("@@") || line.startsWith("File:")) {
+    return { color: "gray", dimColor: true };
+  }
+  if (line.startsWith("+")) {
+    return { color: "green" };
+  }
+  if (line.startsWith("-")) {
+    return { color: "red" };
+  }
+  return {};
 }
 
 function secondaryPrompt(mode: Mode, skillInstallInput: string): string {
@@ -882,23 +1417,22 @@ function secondaryPrompt(mode: Mode, skillInstallInput: string): string {
   if (mode === "skill-install") {
     return skillInstallInput || "输入 Git URL 或本地路径";
   }
+  if (mode === "file-completion") {
+    return "选择文件";
+  }
+  if (mode === "skill-completion") {
+    return "选择 skill";
+  }
   if (mode === "mcp-menu") {
     return "mcp";
   }
   if (mode === "agent-menu") {
     return "agent";
   }
+  if (mode === "approval") {
+    return "等待确认 y/n";
+  }
   return "";
-}
-
-function inputLabel(mode: Mode): string {
-  if (mode === "command") {
-    return "/";
-  }
-  if (mode === "chat") {
-    return ">";
-  }
-  return "配置>";
 }
 
 function formatModel(config: AgentConfig): string {
@@ -917,4 +1451,147 @@ function formatPermissionMode(mode: AgentPermissionMode): string {
 
 function wrap(value: number, length: number): number {
   return (value + length) % length;
+}
+
+function fuzzyMatch(value: string, query: string): boolean {
+  if (!query) {
+    return true;
+  }
+  let cursor = 0;
+  for (const char of query) {
+    cursor = value.indexOf(char, cursor);
+    if (cursor === -1) {
+      return false;
+    }
+    cursor++;
+  }
+  return true;
+}
+
+export function filterCompletionCandidates(candidates: string[], query: string, limit: number): string[] {
+  const normalizedQuery = query.toLowerCase();
+  return candidates
+    .filter((candidate) => completionRank(candidate.toLowerCase(), normalizedQuery) < Number.POSITIVE_INFINITY)
+    .sort((left, right) => completionRank(left.toLowerCase(), normalizedQuery) - completionRank(right.toLowerCase(), normalizedQuery))
+    .slice(0, limit);
+}
+
+function completionRank(value: string, query: string): number {
+  if (!query) {
+    return 0;
+  }
+  if (value === query) {
+    return 0;
+  }
+  if (value.startsWith(query)) {
+    return 1;
+  }
+  const slashless = value.startsWith("/") ? value.slice(1) : value;
+  const basename = slashless.split("/").at(-1) ?? slashless;
+  if (slashless === query) {
+    return 2;
+  }
+  if (slashless.startsWith(query)) {
+    return 3;
+  }
+  if (basename === query) {
+    return 4;
+  }
+  if (basename.startsWith(query)) {
+    return 5;
+  }
+  const basenameIndex = basename.indexOf(query);
+  if (basenameIndex >= 0) {
+    return 10 + basenameIndex;
+  }
+  const index = value.indexOf(query);
+  if (index >= 0) {
+    return 30 + index;
+  }
+  if (fuzzyMatch(value, query)) {
+    return 100 + value.length;
+  }
+  return Number.POSITIVE_INFINITY;
+}
+
+function isPromptEditingMode(mode: Mode): boolean {
+  return mode === "chat" || mode === "command" || mode === "file-completion" || mode === "skill-completion";
+}
+
+export async function listWorkspaceFiles(workspacePath: string): Promise<string[]> {
+  const normalizeFiles = (stdout: string) =>
+    stdout
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line) => line.replace(/^\.\//, ""))
+      .filter((line) => !line.startsWith(".git/"))
+      .slice(0, 1000);
+
+  try {
+    const { stdout } = await execFileAsync("rg", ["--files"], { cwd: workspacePath });
+    const files = normalizeFiles(stdout);
+    if (files.length > 0) {
+      return files;
+    }
+  } catch {
+    // Fall through to find/Node scanning. TUI environments can have a different PATH.
+  }
+
+  try {
+    const { stdout } = await execFileAsync("find", [".", "-type", "f", "-not", "-path", "./.git/*"], { cwd: workspacePath });
+    const files = normalizeFiles(stdout);
+    if (files.length > 0) {
+      return files;
+    }
+  } catch {
+    // Fall through to the dependency-free scanner.
+  }
+
+  return listWorkspaceFilesWithNode(workspacePath);
+}
+
+function isReturnInput(input: string): boolean {
+  return input === "\r" || input === "\n";
+}
+
+const ignoredFileCompletionDirs = new Set([".git", "node_modules", ".coding-agent", "dist", "build", "coverage"]);
+
+async function listWorkspaceFilesWithNode(workspacePath: string, maxFiles = 1000): Promise<string[]> {
+  const files: string[] = [];
+  const pending = [workspacePath];
+
+  while (pending.length > 0 && files.length < maxFiles) {
+    const current = pending.pop();
+    if (!current) {
+      continue;
+    }
+
+    let entries;
+    try {
+      entries = await readdir(current, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+
+    entries.sort((left, right) => left.name.localeCompare(right.name));
+    for (const entry of entries) {
+      const absolutePath = join(current, entry.name);
+      if (entry.isDirectory()) {
+        if (!ignoredFileCompletionDirs.has(entry.name)) {
+          pending.push(absolutePath);
+        }
+        continue;
+      }
+
+      if (entry.isFile()) {
+        files.push(relative(workspacePath, absolutePath));
+        if (files.length >= maxFiles) {
+          break;
+        }
+      }
+    }
+  }
+
+  return files;
 }

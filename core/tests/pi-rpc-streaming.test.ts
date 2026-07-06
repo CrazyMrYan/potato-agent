@@ -1,4 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { AgentEvent, RunTaskInput } from "@coding-agent/protocol";
 import { PiRpcAdapter, type PiRpcClientLike } from "../src/pi/PiRpcAdapter.js";
 
@@ -58,14 +61,15 @@ class FakeRpcClient implements PiRpcClientLike {
 }
 
 describe("PiRpcAdapter streaming", () => {
-  it("starts Pi with manual-mode read-only tools and enabled skills", async () => {
+  it("starts Pi with manual-mode mutating tools and approval extension plus enabled skills", async () => {
     const client = new FakeRpcClient();
+    const workspacePath = mkdtempSync(join(tmpdir(), "coding-agent-rpc-"));
     let clientOptions: unknown;
     const adapter = new PiRpcAdapter(
       {
         provider: "deepseek",
         model: "deepseek-chat",
-        workspacePath: "/repo",
+        workspacePath,
         apiKeyEnvName: "DEEPSEEK_API_KEY",
         apiKey: "test-key",
         timeoutMs: 1000,
@@ -96,7 +100,7 @@ describe("PiRpcAdapter streaming", () => {
     await iterator.next();
 
     expect(clientOptions).toMatchObject({
-      args: ["--no-skills", "--skill", "/repo/.coding-agent/skills/.builtin/debug", "--tools", "read,ls,grep,find", "--exclude-tools", "bash,edit,write"]
+      args: expect.arrayContaining(["--no-skills", "--skill", "/repo/.coding-agent/skills/.builtin/debug", "--tools", "read,ls,grep,find,bash,edit,write", "--extension"])
     });
   });
 
@@ -109,7 +113,8 @@ describe("PiRpcAdapter streaming", () => {
         workspacePath: "/repo",
         apiKeyEnvName: "DEEPSEEK_API_KEY",
         apiKey: "test-key",
-        timeoutMs: 1000
+        timeoutMs: 1000,
+        permissionPolicy: { mode: "bypass" }
       },
       { createClient: () => client }
     );
@@ -128,7 +133,7 @@ describe("PiRpcAdapter streaming", () => {
     await waitUntil(() => client.hasListeners() && client.promptStarted);
     await Promise.resolve();
 
-    expect((await streamed).value).toMatchObject<Partial<AgentEvent>>({ type: "step.started", title: "Pi 已开始处理任务" });
+    expect((await streamed).value).toMatchObject<Partial<AgentEvent>>({ type: "step.started", title: "开始处理任务" });
 
     client.finish();
     expect((await iterator.next()).value).toMatchObject({ type: "task.finished", summary: "完成" });
@@ -143,7 +148,8 @@ describe("PiRpcAdapter streaming", () => {
         workspacePath: "/repo",
         apiKeyEnvName: "DEEPSEEK_API_KEY",
         apiKey: "test-key",
-        timeoutMs: 1000
+        timeoutMs: 1000,
+        permissionPolicy: { mode: "bypass" }
       },
       { createClient: () => client }
     );

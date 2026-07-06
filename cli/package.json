@@ -14,12 +14,12 @@
   "dependencies": {
     "@coding-agent/core": "workspace:*",
     "@coding-agent/protocol": "workspace:*",
+    "@earendil-works/pi-coding-agent": "^0.80.3",
     "@inquirer/prompts": "^8.5.2",
     "commander": "^15.0.0",
     "ink": "^7.1.0",
     "picocolors": "^1.1.1",
-    "react": "^19.2.7",
-    "react-devtools-core": "^6.1.5"
+    "react": "^19.2.7"
   },
   "devDependencies": {
     "@types/node": "^26.1.0",

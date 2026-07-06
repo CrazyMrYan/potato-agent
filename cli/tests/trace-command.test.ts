@@ -19,6 +19,7 @@ describe("trace command", () => {
     });
 
     expect(write).toHaveBeenCalledWith("task_1 3 entries 2026-07-04T00:00:00.000Z");
+    expect(write).toHaveBeenCalledWith("Use `agent trace latest` or `agent trace <taskId>` to inspect entries.");
   });
 
   it("resolves the default workspace before listing traces", async () => {
@@ -86,5 +87,33 @@ describe("trace command", () => {
     });
 
     expect(write).toHaveBeenCalledWith(expect.stringContaining("\"kind\":\"task.finished\""));
+  });
+
+  it("prints readable latest trace entries", async () => {
+    const write = vi.fn();
+    await traceCommand({
+      workspacePath: "/repo",
+      taskId: "latest",
+      write,
+      traceStore: {
+        async list() {
+          return [{ taskId: "task_1", path: "/repo/.coding-agent/traces/task_1.jsonl", updatedAt: "2026-07-04T00:00:00.000Z", entries: 4 }];
+        },
+        async read(taskId: string) {
+          return [
+            { timestamp: "2026-07-04T00:00:00.000Z", taskId, kind: "task.input", input: { taskId, workspacePath: "/repo", prompt: "review", mode: "run", approvalMode: "manual" } },
+            { timestamp: "2026-07-04T00:00:01.000Z", taskId, kind: "event", event: { type: "subagent.selected", taskId, subAgentId: "code-reviewer", name: "Code Reviewer", description: "Review code" } },
+            { timestamp: "2026-07-04T00:00:02.000Z", taskId, kind: "event", event: { type: "tool.started", taskId, tool: "read", summary: "读取文件：src/a.ts" } },
+            { timestamp: "2026-07-04T00:00:03.000Z", taskId, kind: "task.finished", summary: "done" }
+          ];
+        },
+        async append() {}
+      }
+    });
+
+    expect(write).toHaveBeenCalledWith("trace task_1");
+    expect(write).toHaveBeenCalledWith("2026-07-04T00:00:01.000Z subagent.selected Code Reviewer (code-reviewer)");
+    expect(write).toHaveBeenCalledWith("2026-07-04T00:00:02.000Z tool.started read 读取文件：src/a.ts");
+    expect(write).toHaveBeenCalledWith("2026-07-04T00:00:03.000Z task.finished done");
   });
 });

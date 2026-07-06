@@ -11,6 +11,9 @@ importers:
       '@types/node':
         specifier: ^26.1.0
         version: 26.1.0
+      esbuild:
+        specifier: 0.28.1
+        version: 0.28.1
       tsx:
         specifier: ^4.22.4
         version: 4.22.4
@@ -29,6 +32,9 @@ importers:
       '@coding-agent/protocol':
         specifier: workspace:*
         version: link:../protocol
+      '@earendil-works/pi-coding-agent':
+        specifier: ^0.80.3
+        version: 0.80.3(ws@8.21.0)(zod@4.4.3)
       '@inquirer/prompts':
         specifier: ^8.5.2
         version: 8.5.2(@types/node@26.1.0)
