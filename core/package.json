@@ -13,8 +13,11 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@ai-sdk/openai-compatible": "3.0.5",
     "@earendil-works/pi-coding-agent": "^0.80.3",
+    "@modelcontextprotocol/sdk": "1.29.0",
     "@potato/protocol": "workspace:*",
+    "ai": "7.0.16",
     "gpt-tokenizer": "^3.4.0"
   }
 }

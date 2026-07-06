@@ -69,6 +69,20 @@ pnpm build:npm:cli
 - 模型适配：桌面端前评估 OpenAI-compatible、LiteLLM、Vercel AI SDK、OpenRouter。当前 Pi RPC 不急于绑定这些。
 - MCP 注入：当前只做配置检测，不应虚标为已接管。后续应基于 Pi SDK session 或独立 runtime adapter 实现真实注入。
 - 终端快捷键和输入：当前 Ink TUI 自行处理编辑、补全、快捷键和历史回填。若交互复杂度继续上升，需要评估专门的 readline/editor 抽象，避免在 `AgentTui.tsx` 里堆状态机。
+- 联网搜索：DeepSeek API key 能调用模型不等于已具备联网搜索。开源优先方案是 SearXNG + MCP/search tool；托管方案可评估 Brave Search、Tavily、Exa、Firecrawl。Potato 必须通过明确的 web-search tool 或 MCP 注入暴露联网状态，不能把 provider 官网客户端能力等同于 API runtime 能力。
+- Agent Loop / SubAgent：当前是项目内自定义抽象，不是行业标准协议。后续如要标准化，应评估 OpenAI Agents SDK/Responses tool loop、LangGraph、AutoGen/CrewAI 等可验证 runtime 模型；当前不能标记为标准实现。
+
+当前已执行的标准化边界：
+
+- TUI transcript 已取消应用内 PageUp/PageDown/上下键滚动截断，改为完整输出，滚动交给终端自身。
+- Skills 现在同时通过 `--skill <path>` 传给 Pi，并写入 system prompt 的可见 skill context，包含 enabled/disabled/source/path，避免只靠隐式注入。
+- Runtime capability report 已区分 Pi RPC 当前能力和标准 runtime/sdk 目标能力：Pi RPC 不虚标 MCP/tool interception；runtime 目标对齐 Vercel AI SDK，sdk 目标对齐 Model Context Protocol SDK。
+
+仍不能标记为完成的标准化：
+
+- 当前默认执行路径仍是 `cli -> core -> Pi RPC -> Pi`，不是 Vercel AI SDK runtime。
+- MCP 仍只在 runtime/sdk capability 中标为标准目标；Pi RPC 路径继续报告 adapter unsupported，不能真实注入 MCP tools。
+- AgentLoop/SubAgent 仍是项目内抽象；要变成标准 runtime 需要引入可执行的 graph/agent runtime，而不是只改类型名。
 
 ## 当前上下文压缩机制
 
@@ -90,6 +104,7 @@ pnpm build:npm:cli
 
 - 现在不是模型摘要，也不是历史消息真实裁剪。
 - 当前 `compact()` 生成一个固定结构的 heuristic summary，包含 task、workspace、state 和 next。
+- `/compact` 可以主动触发同一套 heuristic compaction 事件，但仍不是外部成熟压缩方案。
 - token 使用量会在 session 内累计 prompt 和 final output，因此下一轮会看到 `used/max tokens` 增长；百分比在大窗口下可能仍显示 `<1%`。
 - 这个阶段主要用于打通 AgentLoop、AgentSession、trace、TUI 展示和验证路径。
 

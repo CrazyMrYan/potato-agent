@@ -19,16 +19,36 @@ export class RuntimeCapabilityReporter {
       };
     }
 
+    if (adapter === "runtime") {
+      return {
+        adapter,
+        systemPrompt: true,
+        skills: true,
+        mcpServers: true,
+        network: "supported",
+        toolAllowDeny: true,
+        toolInterception: true,
+        toolBoundaryApproval: true,
+        notes: [
+          "Standard runtime target: Vercel AI SDK provider abstraction for model switching and tool calling.",
+          "MCP SDK is the standard target for tool discovery and web-search server injection."
+        ]
+      };
+    }
+
     return {
       adapter,
-      systemPrompt: false,
-      skills: false,
-      mcpServers: false,
-      network: "unsupported",
-      toolAllowDeny: false,
-      toolInterception: false,
-      toolBoundaryApproval: false,
-      notes: [`${adapter} adapter is experimental until SDK/runtime tool interception is implemented.`]
+      systemPrompt: true,
+      skills: true,
+      mcpServers: true,
+      network: "supported",
+      toolAllowDeny: true,
+      toolInterception: true,
+      toolBoundaryApproval: true,
+      notes: [
+        "SDK target: Model Context Protocol injection path with explicit tool interception.",
+        "Use this capability only when the active adapter is sdk, not Pi RPC."
+      ]
     };
   }
 }

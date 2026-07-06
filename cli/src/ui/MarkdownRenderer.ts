@@ -17,5 +17,9 @@ export function renderMarkdownText(markdown: string, options: MarkdownRendererOp
     })
   );
 
-  return marked.parse(markdown.trim(), { async: false }).trim();
+  return cleanupRenderedMarkdown(marked.parse(markdown.trim(), { async: false }).trim());
+}
+
+function cleanupRenderedMarkdown(value: string): string {
+  return value.replace(/\*\*([^*\n]+)\*\*/g, "$1");
 }

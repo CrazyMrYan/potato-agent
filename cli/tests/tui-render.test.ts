@@ -32,8 +32,8 @@ describe("AgentTui render", () => {
     expect(frame).toContain("mode manual");
     expect(frame).toContain("subagent default");
     expect(frame).toContain("network unknown");
-    expect(frame).toContain("commands /model /workspace /diff /trace /mode /skill /mcp /agent /exit");
-    expect(frame).toContain("F12 details");
+    expect(frame).toContain("commands /model /workspace /diff /trace /compact /plan /mode /skill /mcp /agent /exit");
+    expect(frame).toContain("keys Ctrl+P F12 details Ctrl+C");
     expect(frame).not.toContain("input");
   });
 
@@ -102,6 +102,41 @@ describe("AgentTui render", () => {
     expect(frame).not.toContain("context ◉◉◉◉◉◉◉◉○○ 82%\n  done");
   });
 
+  it("renders the full transcript without keyboard-controlled scroll paging", async () => {
+    const workspacePath = await mkdtemp(join(tmpdir(), "coding-agent-tui-"));
+    const rendered = render(
+      React.createElement(AgentTui, {
+        config: {
+          workspacePath,
+          provider: "deepseek",
+          model: "deepseek-reasoner"
+        },
+        createSession: () => ({
+          async start() {},
+          async stop() {},
+          async *send() {
+            for (let index = 0; index < 30; index++) {
+              yield { type: "step.started" as const, taskId: "task_1", title: `line-${index}` };
+            }
+            yield { type: "task.finished" as const, taskId: "task_1", summary: "done" };
+          },
+          async approve() {}
+        })
+      })
+    );
+
+    rendered.stdin.write("task");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    rendered.stdin.write("\r");
+    await waitForFrame(rendered.lastFrame, "done");
+    const frame = rendered.lastFrame() ?? "";
+
+    expect(frame).toContain("line-0");
+    expect(frame).toContain("line-29");
+    expect(frame).not.toContain("PageUp/PageDown");
+    expect(frame).not.toMatch(/transcript · \d+-\d+\/\d+/);
+  });
+
   it("recalls previous prompts with up and down arrows", async () => {
     const workspacePath = await mkdtemp(join(tmpdir(), "coding-agent-tui-"));
     const rendered = render(
@@ -115,28 +150,35 @@ describe("AgentTui render", () => {
           async start() {},
           async stop() {},
           async *send(prompt: string) {
-            yield { type: "task.finished" as const, taskId: `task_${prompt}`, summary: "done" };
+            yield { type: "task.finished" as const, taskId: `task_${prompt}`, summary: `done ${prompt}` };
           },
           async approve() {}
         })
       })
     );
 
-    rendered.stdin.write("first");
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    rendered.stdin.write("\r");
-    await waitForFrame(rendered.lastFrame, "done");
-    rendered.stdin.write("second");
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    rendered.stdin.write("\r");
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    for (const prompt of ["first", "second", "third"]) {
+      rendered.stdin.write(prompt);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      rendered.stdin.write("\r");
+      await waitForFrame(rendered.lastFrame, `done ${prompt}`);
+      await waitForPrompt(rendered.lastFrame, "");
+    }
 
     rendered.stdin.write("\u001b[A");
-    await waitForFrame(rendered.lastFrame, "second");
+    await waitForPrompt(rendered.lastFrame, "third");
     rendered.stdin.write("\u001b[A");
-    await waitForFrame(rendered.lastFrame, "first");
+    await waitForPrompt(rendered.lastFrame, "second");
+    rendered.stdin.write("\u001b[A");
+    await waitForPrompt(rendered.lastFrame, "first");
+    rendered.stdin.write("\u001b[A");
+    await waitForPrompt(rendered.lastFrame, "first");
     rendered.stdin.write("\u001b[B");
-    await waitForFrame(rendered.lastFrame, "second");
+    await waitForPrompt(rendered.lastFrame, "second");
+    rendered.stdin.write("\u001b[B");
+    await waitForPrompt(rendered.lastFrame, "third");
+    rendered.stdin.write("\u001b[B");
+    await waitForPrompt(rendered.lastFrame, "");
   });
 
   it("hides tool calls by default and expands them with Ctrl+O", async () => {
@@ -214,6 +256,71 @@ describe("AgentTui render", () => {
     expect(frame).not.toContain("COMMANDS");
   });
 
+  it("runs manual compaction from /compact", async () => {
+    const compactContext = vi.fn(async function* () {
+      yield { type: "context.budget" as const, taskId: "manual_compact", usedTokens: 20, maxTokens: 100, ratio: 0.2, compactAtRatio: 0.75 };
+      yield { type: "context.compacted" as const, taskId: "manual_compact", summary: "Manual summary", originalTokens: 20, compactedTokens: 4 };
+    });
+    const rendered = render(
+      React.createElement(AgentTui, {
+        config: {
+          workspacePath: "/repo",
+          provider: "deepseek",
+          model: "deepseek-reasoner"
+        },
+        skillManager: {
+          async list() {
+            return [];
+          },
+          async install() {
+            throw new Error("not used");
+          },
+          async setEnabled() {}
+        },
+        createSession: () => ({
+          async start() {},
+          async stop() {},
+          async *send() {},
+          async approve() {},
+          compactContext
+        })
+      })
+    );
+
+    rendered.stdin.write("/compact");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    rendered.stdin.write("\r");
+    await waitForFrame(rendered.lastFrame, "context compacted 20 -> 4 tokens");
+
+    expect(compactContext).toHaveBeenCalledWith("manual");
+  });
+
+  it("opens plan mode from /plan without sending it to the model", async () => {
+    const send = vi.fn(async function* () {});
+    const rendered = render(
+      React.createElement(AgentTui, {
+        config: {
+          workspacePath: "/repo",
+          provider: "deepseek",
+          model: "deepseek-reasoner"
+        },
+        createSession: () => ({
+          async start() {},
+          async stop() {},
+          send,
+          async approve() {}
+        })
+      })
+    );
+
+    rendered.stdin.write("/plan");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    rendered.stdin.write("\r");
+    await waitForFrame(rendered.lastFrame, "PLAN MODE");
+
+    expect(send).not.toHaveBeenCalled();
+  });
+
   it("lists workspace files for @ completion", async () => {
     const workspacePath = await mkdtemp(join(tmpdir(), "coding-agent-tui-"));
     await writeFile(join(workspacePath, "README.md"), "# test\n");
@@ -229,7 +336,7 @@ describe("AgentTui render", () => {
     );
 
     rendered.stdin.write("@");
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await waitForFrame(rendered.lastFrame, "README.md");
     const frame = rendered.lastFrame() ?? "";
 
     expect(frame).toContain("FILES");
@@ -450,4 +557,21 @@ async function waitForFrame(lastFrame: () => string | undefined, text: string): 
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
   throw new Error(`Timed out waiting for ${text}.\n${lastFrame() ?? ""}`);
+}
+
+async function waitForPrompt(lastFrame: () => string | undefined, text: string): Promise<void> {
+  for (let attempt = 0; attempt < 20; attempt++) {
+    const prompt = currentPromptText(lastFrame() ?? "");
+    if (prompt === text) {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  throw new Error(`Timed out waiting for prompt ${JSON.stringify(text)}.\n${lastFrame() ?? ""}`);
+}
+
+function currentPromptText(frame: string): string {
+  const matches = [...frame.matchAll(/│ ([^│]*?)▌\s*│/g)];
+  const value = matches.at(-1)?.[1] ?? "";
+  return value.trimEnd();
 }

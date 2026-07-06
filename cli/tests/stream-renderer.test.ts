@@ -72,6 +72,28 @@ describe("EventStreamRenderer", () => {
     expect(output).toContain("@earendil-works/pi-coding-agent");
   });
 
+  it("does not render task finished summary again when it duplicates streamed assistant text", () => {
+    const renderer = new EventStreamRenderer({ colors: false });
+    const streamed = [
+      renderer.render({ type: "assistant.delta", taskId: "task_1", channel: "text", text: "你好！我是\nPotato" }),
+      renderer.render({ type: "task.finished", taskId: "task_1", summary: "你好！我是\nPotato" })
+    ].filter(Boolean);
+
+    expect(streamed).toEqual(["你好！我是\nPotato"]);
+  });
+
+  it("renders bold text inside ordered lists without raw markdown markers", () => {
+    const renderer = new EventStreamRenderer({ colors: false });
+
+    renderer.render({ type: "assistant.delta", taskId: "task_1", channel: "text", text: "1. **重点**：完成测试\n2. **验证**：运行构建" });
+    const output = renderer.flush();
+
+    expect(output).toContain("重点");
+    expect(output).toContain("验证");
+    expect(output).not.toContain("**重点**");
+    expect(output).not.toContain("**验证**");
+  });
+
   it("renders context budget and compaction status", () => {
     const renderer = new EventStreamRenderer({ colors: false });
 

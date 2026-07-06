@@ -29,6 +29,7 @@ export type RenderedAgentEvent = {
 export class EventStreamRenderer {
   private pendingText = "";
   private pendingThinking = "";
+  private lastRenderedAssistantText = "";
   private readonly colors: boolean;
   private readonly maxToolOutputLength: number;
 
@@ -54,7 +55,7 @@ export class EventStreamRenderer {
       return [];
     }
 
-    return [...this.flushEvents(), this.renderImmediate(event)];
+    return [...this.flushEvents(), this.renderImmediate(event)].filter((item) => item.text.length > 0);
   }
 
   flush(): string {
@@ -72,7 +73,9 @@ export class EventStreamRenderer {
     }
 
     if (this.pendingText.trim()) {
-      events.push({ kind: "text", text: renderMarkdownText(this.pendingText, { colors: this.colors }) });
+      const text = renderMarkdownText(this.pendingText, { colors: this.colors });
+      this.lastRenderedAssistantText = normalizeRenderedText(text);
+      events.push({ kind: "text", text });
       this.pendingText = "";
     }
 
@@ -112,7 +115,7 @@ export class EventStreamRenderer {
       case "verification.finished":
         return event.exitCode === 0 ? { kind: "success", text: this.green(event.command) } : { kind: "error", text: this.red(event.command) };
       case "task.finished":
-        return { kind: "text", text: renderMarkdownText(event.summary, { colors: this.colors }) };
+        return this.renderTaskFinished(event.summary);
       case "task.failed":
         return { kind: "error", text: this.red(`${event.error.code} ${event.error.message}`) };
     }
@@ -120,6 +123,15 @@ export class EventStreamRenderer {
 
   private formatToolOutput(output: string): string {
     return truncate(compactInline(output), this.maxToolOutputLength);
+  }
+
+  private renderTaskFinished(summary: string): RenderedAgentEvent {
+    const text = renderMarkdownText(summary, { colors: this.colors });
+    if (text && normalizeRenderedText(text) === this.lastRenderedAssistantText) {
+      return { kind: "text", text: "" };
+    }
+    this.lastRenderedAssistantText = normalizeRenderedText(text);
+    return { kind: "text", text };
   }
 
   private cyan(value: string): string {
@@ -156,6 +168,10 @@ export class EventStreamRenderer {
 }
 
 function compactInline(value: string): string {
+  return value.replace(/\s+/g, " ").trim();
+}
+
+function normalizeRenderedText(value: string): string {
   return value.replace(/\s+/g, " ").trim();
 }
 

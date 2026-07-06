@@ -143,6 +143,38 @@ describe("AgentSessionFactory", () => {
     expect(secondBudget).toBeGreaterThan(firstBudget);
   });
 
+  it("supports manual context compaction through the active session", async () => {
+    const adapter = new FakeSessionAdapter();
+    const traceStore = new MemoryTraceStore();
+    const factory = new AgentSessionFactory({
+      createAdapter: () => adapter,
+      createTraceStore: () => traceStore,
+      createContextBudget: () => ({
+        maxTokens: 100,
+        compactAtRatio: 0.75,
+        estimate: () => ({ usedTokens: 20, maxTokens: 100, ratio: 0.2 }),
+        compact: async () => ({ summary: "Manual summary", originalTokens: 20, compactedTokens: 4 })
+      }),
+      env: { DEEPSEEK_API_KEY: "test-key" }
+    });
+    const session = await factory.create({
+      provider: "deepseek",
+      model: "deepseek-reasoner",
+      workspacePath: "/repo"
+    });
+
+    const events = [];
+    for await (const event of session.compactContext("manual")) {
+      events.push(event);
+    }
+
+    expect(events).toEqual([
+      { type: "context.budget", taskId: "manual_compact", usedTokens: 20, maxTokens: 100, ratio: 0.2, compactAtRatio: 0.75 },
+      { type: "context.compacted", taskId: "manual_compact", summary: "Manual summary", originalTokens: 20, compactedTokens: 4 }
+    ]);
+    expect(traceStore.entries.map((entry) => entry.kind)).toContain("context.compacted");
+  });
+
   it("forwards approval decisions to the active adapter", async () => {
     const adapter = new FakeSessionAdapter();
     const factory = new AgentSessionFactory({
@@ -180,6 +212,23 @@ describe("AgentSessionFactory", () => {
 
     expect(adapter.approvals).toEqual([{ requestId: "approval_1", approved: false }]);
     expect(adapter.stopped).toBe(true);
+  });
+
+  it("creates a standard runtime session when adapter is runtime", async () => {
+    const factory = new AgentSessionFactory({
+      env: { OPENAI_API_KEY: "test-key" },
+      createTraceStore: () => new MemoryTraceStore()
+    });
+
+    const session = await factory.create({
+      adapter: "runtime",
+      provider: "openai-compatible",
+      model: "test-model",
+      apiKey: "test-key",
+      workspacePath: "/repo"
+    });
+
+    expect(session.adapterName()).toBe("runtime");
   });
 });
 

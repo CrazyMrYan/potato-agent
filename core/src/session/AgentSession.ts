@@ -105,6 +105,29 @@ export class AgentSession {
     await this.stop();
   }
 
+  async *compactContext(reason: "manual" | "automatic" = "manual"): AsyncIterable<AgentEvent> {
+    if (!this.contextBudget) {
+      yield {
+        type: "task.failed",
+        taskId: `${reason}_compact`,
+        error: {
+          code: "UNKNOWN_ERROR",
+          message: "当前会话不支持主动压缩。"
+        }
+      };
+      return;
+    }
+
+    const input: RunTaskInput = {
+      taskId: `${reason}_compact`,
+      workspacePath: this.workspacePath,
+      prompt: `${reason} context compaction`,
+      mode: "run",
+      approvalMode: "manual"
+    };
+    yield* this.prepareContext(input, { force: true });
+  }
+
   private async trace(entry: Parameters<TraceStore["append"]>[0]): Promise<void> {
     try {
       await this.traceStore?.append(entry);
@@ -113,7 +136,7 @@ export class AgentSession {
     }
   }
 
-  private async *prepareContext(input: RunTaskInput): AsyncIterable<AgentEvent> {
+  private async *prepareContext(input: RunTaskInput, options: { force?: boolean } = {}): AsyncIterable<AgentEvent> {
     if (!this.contextBudget) {
       return;
     }
@@ -131,7 +154,7 @@ export class AgentSession {
     await this.trace({ timestamp: nowIso(), taskId: input.taskId, kind: "event", event: budgetEvent });
     yield budgetEvent;
 
-    if (budget.ratio < this.contextBudget.compactAtRatio) {
+    if (!options.force && budget.ratio < this.contextBudget.compactAtRatio) {
       return;
     }
 

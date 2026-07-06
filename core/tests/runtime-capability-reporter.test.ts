@@ -19,14 +19,28 @@ describe("RuntimeCapabilityReporter", () => {
   it("reports runtime path as experimental until backed by an implementation", () => {
     expect(new RuntimeCapabilityReporter().forAdapter("runtime")).toEqual({
       adapter: "runtime",
-      systemPrompt: false,
-      skills: false,
-      mcpServers: false,
-      network: "unsupported",
-      toolAllowDeny: false,
-      toolInterception: false,
-      toolBoundaryApproval: false,
-      notes: expect.arrayContaining([expect.stringContaining("experimental")])
+      systemPrompt: true,
+      skills: true,
+      mcpServers: true,
+      network: "supported",
+      toolAllowDeny: true,
+      toolInterception: true,
+      toolBoundaryApproval: true,
+      notes: expect.arrayContaining([expect.stringContaining("Vercel AI SDK"), expect.stringContaining("MCP SDK")])
+    });
+  });
+
+  it("reports SDK path as the standard MCP injection target", () => {
+    expect(new RuntimeCapabilityReporter().forAdapter("sdk")).toEqual({
+      adapter: "sdk",
+      systemPrompt: true,
+      skills: true,
+      mcpServers: true,
+      network: "supported",
+      toolAllowDeny: true,
+      toolInterception: true,
+      toolBoundaryApproval: true,
+      notes: expect.arrayContaining([expect.stringContaining("Model Context Protocol")])
     });
   });
 });

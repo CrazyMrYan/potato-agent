@@ -3,6 +3,7 @@ import { join } from "node:path";
 import type { SubAgentConfig } from "../subagent/SubAgentConfig.js";
 
 export type AgentConfig = {
+  adapter?: "rpc" | "runtime" | "sdk";
   provider?: string;
   model?: string;
   apiKey?: string;
@@ -93,7 +94,7 @@ export function buildPiRpcArgs(config: AgentConfig): string[] {
   const runtimeTools = buildRuntimeToolConfig(config);
   const policy = resolveAgentPermissionPolicy(config);
 
-  pushValue(args, "--system-prompt", config.systemPrompt ?? DEFAULT_SYSTEM_PROMPT);
+  pushValue(args, "--system-prompt", [config.systemPrompt ?? DEFAULT_SYSTEM_PROMPT, buildSkillContextPrompt(config.skills)].filter(Boolean).join("\n\n"));
   for (const prompt of config.appendSystemPrompt ?? []) {
     pushValue(args, "--append-system-prompt", prompt);
   }
@@ -121,6 +122,24 @@ export function buildPiRpcArgs(config: AgentConfig): string[] {
   }
 
   return args;
+}
+
+export function buildSkillContextPrompt(skills: AgentSkillConfig[] | undefined): string | undefined {
+  if (!skills || skills.length === 0) {
+    return undefined;
+  }
+
+  return [
+    "Potato managed skills:",
+    ...skills.map((skill) => {
+      const id = skill.id ?? skill.name ?? skill.path;
+      const name = skill.name ?? id;
+      const source = skill.source ?? "local";
+      const status = skill.enabled === false ? "disabled" : "enabled";
+      return `- ${id}: ${name} (${source}) ${status} path=${skill.path}`;
+    }),
+    "Only use enabled skills unless the user explicitly enables or mentions a disabled skill for the current turn."
+  ].join("\n");
 }
 
 export function buildRuntimeToolConfig(config: AgentConfig): AgentToolConfig {

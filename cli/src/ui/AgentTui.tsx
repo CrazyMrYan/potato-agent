@@ -3,7 +3,7 @@ import { execFile } from "node:child_process";
 import { readdir } from "node:fs/promises";
 import { join, relative } from "node:path";
 import { promisify } from "node:util";
-import { Box, Text, useApp, useInput, useStdout } from "ink";
+import { Box, Text, useApp, useInput } from "ink";
 import {
   GitDiffService,
   JsonlTraceStore,
@@ -62,6 +62,7 @@ type Mode =
   | "skill-completion"
   | "mcp-menu"
   | "agent-menu"
+  | "plan-mode"
   | "approval";
 
 const providerOptions = ["deepseek", "openai", "anthropic", "gemini", "mistral"] as const;
@@ -78,6 +79,8 @@ const commandOptions = [
   { command: "/workspace", label: "/workspace", description: "显示当前工作区" },
   { command: "/diff", label: "/diff", description: "显示当前 Git 变更" },
   { command: "/trace", label: "/trace", description: "显示最近 trace" },
+  { command: "/compact", label: "/compact", description: "主动压缩当前上下文" },
+  { command: "/plan", label: "/plan", description: "进入计划模式，不直接改代码" },
   { command: "/mode", label: "/mode", description: "打开权限模式选择" },
   { command: "/skill", label: "/skill", description: "管理 skills" },
   { command: "/mcp", label: "/mcp", description: "检测 MCP 配置" },
@@ -95,7 +98,6 @@ const execFileAsync = promisify(execFile);
 
 export function AgentTui(props: AgentTuiProps): React.ReactElement {
   const app = useApp();
-  const stdout = useStdout();
   const [config, setConfig] = useState<AgentConfig>({ ...props.config });
   const [busy, setBusy] = useState(false);
   const [editor, setEditor] = useState<PromptEditorState>(() => createPromptEditor());
@@ -104,7 +106,6 @@ export function AgentTui(props: AgentTuiProps): React.ReactElement {
   const [fileCandidatesLoading, setFileCandidatesLoading] = useState(false);
   const [skillCandidates, setSkillCandidates] = useState<string[]>([]);
   const [skillCandidatesLoading, setSkillCandidatesLoading] = useState(false);
-  const [scrollOffset, setScrollOffset] = useState(0);
   const [mode, setMode] = useState<Mode>("chat");
   const [selectedCompletion, setSelectedCompletion] = useState(0);
   const [selectedProvider, setSelectedProvider] = useState(() => {
@@ -136,14 +137,7 @@ export function AgentTui(props: AgentTuiProps): React.ReactElement {
   const mcpChecker = props.mcpChecker ?? new McpConfigChecker({ adapter: "rpc" });
   const subAgentManager = props.subAgentManager ?? new SubAgentManager();
 
-  const visibleEventCapacity = Math.max(8, Math.min(24, stdout.stdout.rows - 9));
   const displayEvents = useMemo(() => filterDisplayEvents(events, expandedKinds), [events, expandedKinds]);
-  const maxScrollOffset = Math.max(displayEvents.length - visibleEventCapacity, 0);
-  const visibleEvents = useMemo(() => {
-    const end = Math.max(displayEvents.length - scrollOffset, 0);
-    const start = Math.max(end - visibleEventCapacity, 0);
-    return displayEvents.slice(start, end);
-  }, [displayEvents, scrollOffset, visibleEventCapacity]);
   const commandMatches = useMemo(() => {
     if (completionContext?.type !== "command") {
       return commandOptions;
@@ -170,7 +164,6 @@ export function AgentTui(props: AgentTuiProps): React.ReactElement {
 
   const appendEvent = useCallback((event: RenderedAgentEvent) => {
     setEvents((current) => [...current, event]);
-    setScrollOffset(0);
   }, []);
 
   const appendEvents = useCallback((nextEvents: RenderedAgentEvent[]) => {
@@ -183,7 +176,6 @@ export function AgentTui(props: AgentTuiProps): React.ReactElement {
       return;
     }
     setEvents((current) => [...current, ...filtered]);
-    setScrollOffset(0);
   }, []);
 
   const updateEditor = useCallback((nextEditor: PromptEditorState) => {
@@ -353,6 +345,34 @@ export function AgentTui(props: AgentTuiProps): React.ReactElement {
     appendEvents(entries.slice(-20).map((entry) => ({ kind: "muted", text: formatTraceEntry(entry) })));
   }, [appendEvent, appendEvents, props.traceStore, workspacePath]);
 
+  const compactContext = useCallback(async () => {
+    const activeSession = sessionRef.current ?? (await props.createSession?.(await buildRuntimeConfig()));
+    if (!activeSession) {
+      appendEvent({ kind: "error", text: "当前会话不支持主动压缩：缺少 core session factory。" });
+      return;
+    }
+    if (!("compactContext" in activeSession) || typeof activeSession.compactContext !== "function") {
+      appendEvent({ kind: "warning", text: "当前会话不支持主动压缩。" });
+      return;
+    }
+    if (!sessionRef.current) {
+      await activeSession.start();
+      sessionRef.current = activeSession;
+    }
+
+    const renderer = new EventStreamRenderer({ colors: false });
+    appendEvent({ kind: "muted", text: "context compact requested: heuristic summary, not external compaction yet." });
+    for await (const event of activeSession.compactContext("manual")) {
+      appendEvents(renderer.renderEvent(event));
+    }
+    appendEvents(renderer.flushEvents());
+  }, [appendEvent, appendEvents, buildRuntimeConfig, props]);
+
+  const openPlanMode = useCallback(() => {
+    setMode("plan-mode");
+    appendEvent({ kind: "muted", text: "PLAN MODE：先产出计划并等待确认，不直接修改文件。" });
+  }, [appendEvent]);
+
   const sendPrompt = useCallback(
     async (prompt: string) => {
       if (busy) {
@@ -503,10 +523,20 @@ export function AgentTui(props: AgentTuiProps): React.ReactElement {
         return;
       }
 
+      if (prompt === "/compact") {
+        await compactContext();
+        return;
+      }
+
+      if (prompt === "/plan") {
+        openPlanMode();
+        return;
+      }
+
       setPromptHistory((current) => [...current.filter((item) => item !== prompt), prompt].slice(-50));
       await sendPrompt(prompt);
     },
-    [app, appendEvent, enterModelProviderMode, openAgentMenu, openMcpMenu, openPermissionMode, openSkillList, sendPrompt, showDiff, showTrace, workspacePath]
+    [app, appendEvent, compactContext, enterModelProviderMode, openAgentMenu, openMcpMenu, openPermissionMode, openPlanMode, openSkillList, sendPrompt, showDiff, showTrace, workspacePath]
   );
 
   useEffect(() => {
@@ -596,24 +626,12 @@ export function AgentTui(props: AgentTuiProps): React.ReactElement {
       return;
     }
 
-    if (mode === "chat" && key.pageUp) {
-      setScrollOffset((value) => Math.min(value + 8, maxScrollOffset));
-      return;
-    }
-
-    if (mode === "chat" && key.pageDown) {
-      setScrollOffset((value) => Math.max(value - 8, 0));
-      return;
-    }
-
-    if (mode === "chat" && key.upArrow && editor.text.length === 0) {
+    if (mode === "chat" && key.upArrow && (editor.text.length === 0 || historyIndex !== undefined)) {
       const nextIndex = historyIndex === undefined ? promptHistory.length - 1 : Math.max(historyIndex - 1, 0);
       const prompt = promptHistory[nextIndex];
       if (prompt) {
         setHistoryIndex(nextIndex);
         updateEditor(createPromptEditor(prompt));
-      } else {
-        setScrollOffset((value) => Math.min(value + 1, maxScrollOffset));
       }
       return;
     }
@@ -628,8 +646,6 @@ export function AgentTui(props: AgentTuiProps): React.ReactElement {
           setHistoryIndex(undefined);
           updateEditor(createPromptEditor());
         }
-      } else {
-        setScrollOffset((value) => Math.max(value - 1, 0));
       }
       return;
     }
@@ -843,18 +859,14 @@ export function AgentTui(props: AgentTuiProps): React.ReactElement {
           <Text dimColor>network <Text color="white">{runtimeCapability.network}</Text></Text>
         </Box>
         <Box gap={2} flexWrap="wrap">
-          <Text dimColor>commands <Text color="white">/model /workspace /diff /trace /mode /skill /mcp /agent /exit</Text></Text>
-          <Text dimColor>keys <Text color="white">Ctrl+P PageUp/PageDown F12 details Ctrl+C</Text></Text>
+          <Text dimColor>commands <Text color="white">/model /workspace /diff /trace /compact /plan /mode /skill /mcp /agent /exit</Text></Text>
+          <Text dimColor>keys <Text color="white">Ctrl+P F12 details Ctrl+C</Text></Text>
         </Box>
       </Box>
 
-      <Box marginTop={1} paddingX={1} flexDirection="column" minHeight={visibleEventCapacity} overflow="hidden">
-        <Text dimColor>
-          transcript{displayEvents.length > visibleEventCapacity
-            ? ` · ${Math.max(displayEvents.length - visibleEventCapacity - scrollOffset + 1, 1)}-${Math.max(displayEvents.length - scrollOffset, 1)}/${displayEvents.length}`
-            : ""}
-        </Text>
-        {visibleEvents.map((event, index) => (
+      <Box marginTop={1} paddingX={1} flexDirection="column">
+        <Text dimColor>transcript</Text>
+        {displayEvents.map((event, index) => (
           <EventLine event={event} key={`${index}-${event.kind}-${event.text}`} />
         ))}
         <CommandMenu mode={mode} selectedCommand={selectedCompletion} commands={commandMatches} />
@@ -883,6 +895,7 @@ export function AgentTui(props: AgentTuiProps): React.ReactElement {
         <SkillList mode={mode} skills={skillItems} selectedSkill={selectedSkill} skillInstallInput={skillInstallInput} />
         <McpMenu mode={mode} servers={config.mcpServers ?? []} results={mcpResults} />
         <AgentMenu mode={mode} agents={subAgentItems} selectedSubAgent={selectedSubAgent} activeSubAgentId={config.activeSubAgentId ?? "default"} />
+        <PlanMode mode={mode} />
         <ApprovalPrompt mode={mode} request={pendingApproval} />
       </Box>
 
@@ -1159,6 +1172,13 @@ function handleSecondaryInput(options: SecondaryInputOptions): void {
   }
 
   if (mode === "mcp-menu") {
+    if (key.return) {
+      setMode("chat");
+    }
+    return;
+  }
+
+  if (mode === "plan-mode") {
     if (key.return) {
       setMode("chat");
     }
@@ -1441,6 +1461,20 @@ function AgentMenu({
   );
 }
 
+function PlanMode({ mode }: { mode: Mode }): React.ReactElement | null {
+  if (mode !== "plan-mode") {
+    return null;
+  }
+
+  return (
+    <>
+      <Text dimColor>PLAN MODE</Text>
+      <Text>当前模式只用于规划：输入后续任务前请先确认计划，避免直接执行变更。</Text>
+      <Text dimColor>Enter 或 Esc 返回聊天</Text>
+    </>
+  );
+}
+
 function eventTextStyle(kind: RenderedAgentEventKind): { color?: string; dimColor?: boolean; bold?: boolean } {
   const styles: Record<RenderedAgentEventKind, { color?: string; dimColor?: boolean; bold?: boolean }> = {
     user: { color: "cyan", bold: true },
@@ -1529,6 +1563,9 @@ function secondaryPrompt(mode: Mode, skillInstallInput: string): string {
   }
   if (mode === "agent-menu") {
     return "agent";
+  }
+  if (mode === "plan-mode") {
+    return "plan";
   }
   if (mode === "approval") {
     return "等待确认 y/n";

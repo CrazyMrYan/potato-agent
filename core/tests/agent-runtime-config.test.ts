@@ -7,6 +7,7 @@ import {
   DEFAULT_AGENT_PERMISSION_POLICY,
   DEFAULT_SYSTEM_PROMPT,
   buildPiRpcArgs,
+  buildSkillContextPrompt,
   buildRuntimeToolConfig,
   mergeAgentConfig,
   resolveAgentPermissionPolicy
@@ -62,8 +63,7 @@ describe("Agent runtime config", () => {
 
     expect(resolveAgentPermissionPolicy({})).toEqual(DEFAULT_AGENT_PERMISSION_POLICY);
 
-    expect(
-      buildPiRpcArgs({
+    const args = buildPiRpcArgs({
         systemPrompt: "系统提示词",
         appendSystemPrompt: ["追加规则"],
         permissionPolicy: { mode: "bypass" },
@@ -72,10 +72,11 @@ describe("Agent runtime config", () => {
           { id: "disabled", name: "disabled", path: "/repo/.potato/skills/disabled", source: "local", enabled: false }
         ],
         tools: { allow: ["read", "grep"], deny: ["bash"] }
-      })
-    ).toEqual([
+      });
+
+    expect(args).toEqual([
       "--system-prompt",
-      "系统提示词",
+      expect.stringContaining("系统提示词"),
       "--append-system-prompt",
       "追加规则",
       "--no-skills",
@@ -86,6 +87,7 @@ describe("Agent runtime config", () => {
       "--exclude-tools",
       "bash"
     ]);
+    expect(args[1]).toContain("Potato managed skills:");
   });
 
   it("uses a Potato system identity by default", () => {
@@ -136,21 +138,46 @@ describe("Agent runtime config", () => {
   });
 
   it("disables Pi skill auto-discovery when runtime skills are managed explicitly", () => {
-    expect(
-      buildPiRpcArgs({
+    const args = buildPiRpcArgs({
         skills: [
           { id: "enabled", name: "enabled", path: "/repo/.potato/skills/.builtin/enabled", source: "builtin", enabled: true },
           { id: "disabled", name: "disabled", path: "/repo/.potato/skills/.builtin/disabled", source: "builtin", enabled: false }
         ]
-      })
-    ).toEqual([
+      });
+
+    expect(args).toEqual([
       "--system-prompt",
-      DEFAULT_SYSTEM_PROMPT,
+      expect.stringContaining(DEFAULT_SYSTEM_PROMPT),
       "--no-skills",
       "--skill",
       "/repo/.potato/skills/.builtin/enabled",
       "--tools",
       "read,ls,grep,find,bash,edit,write"
     ]);
+    expect(args[1]).toContain("Potato managed skills:");
+  });
+
+  it("adds managed skills to visible runtime context as well as Pi skill paths", () => {
+    expect(
+      buildSkillContextPrompt([
+        { id: "enabled", name: "Enabled Skill", path: "/repo/.potato/skills/enabled", source: "local", enabled: true },
+        { id: "disabled", name: "Disabled Skill", path: "/repo/.potato/skills/disabled", source: "local", enabled: false }
+      ])
+    ).toBe(
+      [
+        "Potato managed skills:",
+        "- enabled: Enabled Skill (local) enabled path=/repo/.potato/skills/enabled",
+        "- disabled: Disabled Skill (local) disabled path=/repo/.potato/skills/disabled",
+        "Only use enabled skills unless the user explicitly enables or mentions a disabled skill for the current turn."
+      ].join("\n")
+    );
+
+    const args = buildPiRpcArgs({
+        skills: [
+          { id: "enabled", name: "Enabled Skill", path: "/repo/.potato/skills/enabled", source: "local", enabled: true },
+          { id: "disabled", name: "Disabled Skill", path: "/repo/.potato/skills/disabled", source: "local", enabled: false }
+        ]
+      });
+    expect(args[1]).toContain("Potato managed skills:");
   });
 });
