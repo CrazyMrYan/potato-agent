@@ -1,4 +1,4 @@
-import type { AgentEvent, RunTaskInput } from "@coding-agent/protocol";
+import type { AgentEvent, RunTaskInput } from "@potato/protocol";
 import { AgentOrchestrator } from "../orchestrator/AgentOrchestrator.js";
 import type { AgentGateway } from "./AgentGateway.js";
 

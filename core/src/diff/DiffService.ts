@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import type { ChangeSet, FileChangeStatus } from "@coding-agent/protocol";
+import type { ChangeSet, FileChangeStatus } from "@potato/protocol";
 
 const execFileAsync = promisify(execFile);
 

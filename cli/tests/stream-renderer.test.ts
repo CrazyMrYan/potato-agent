@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { EventStreamRenderer } from "../src/ui/EventStreamRenderer.js";
 
 describe("EventStreamRenderer", () => {
-  it("renders agent events without hard-coded Chinese prefixes around model content", () => {
+  it("renders potato events without hard-coded Chinese prefixes around model content", () => {
     const renderer = new EventStreamRenderer({ colors: false });
     const lines = [
       renderer.render({ type: "step.started", taskId: "task_1", title: "Pi 开始新一轮推理" }),

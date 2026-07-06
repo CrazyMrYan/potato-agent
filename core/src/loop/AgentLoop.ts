@@ -1,4 +1,4 @@
-import type { AgentEvent, RunTaskInput, TaskFailedEvent, TaskFinishedEvent } from "@coding-agent/protocol";
+import type { AgentEvent, RunTaskInput, TaskFailedEvent, TaskFinishedEvent } from "@potato/protocol";
 import type { DiffService } from "../diff/DiffService.js";
 import type { PiAdapter } from "../pi/PiAdapter.js";
 import type { SubAgentConfig } from "../subagent/SubAgentConfig.js";

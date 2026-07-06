@@ -4,7 +4,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Make `agent` open a lightweight interactive TUI by default, allow runtime model configuration, and move session/config creation out of CLI into `@coding-agent/core`.
+**Goal:** Make `potato` open a lightweight interactive TUI by default, allow runtime model configuration, and move session/config creation out of CLI into `@potato/core`.
 
 **Architecture:** `core/` owns model config normalization, API key resolution, persisted workspace config, and session creation. `cli/` owns commander wiring and Vue TUI rendering only. The existing `run` and `chat` commands remain as compatibility paths.
 
@@ -17,7 +17,7 @@
 Create and modify these files:
 
 - Create `core/src/config/AgentConfig.ts`: shared config types and merge helpers.
-- Create `core/src/config/AgentConfigStore.ts`: file-backed `.coding-agent/config.json` config store.
+- Create `core/src/config/AgentConfigStore.ts`: file-backed `.potato/config.json` config store.
 - Create `core/src/session/AgentSession.ts`: session facade that wraps `PiSessionAdapter`.
 - Create `core/src/session/AgentSessionFactory.ts`: creates sessions from runtime config.
 - Modify `core/src/index.ts`: export config and session APIs.
@@ -75,7 +75,7 @@ describe("FileAgentConfigStore", () => {
         apiKey: "secret"
       });
 
-      const raw = await readFile(join(workspace, ".coding-agent", "config.json"), "utf8");
+      const raw = await readFile(join(workspace, ".potato", "config.json"), "utf8");
       expect(JSON.parse(raw)).toEqual({
         provider: "deepseek",
         model: "deepseek-reasoner",
@@ -109,7 +109,7 @@ describe("mergeAgentConfig", () => {
 Run:
 
 ```bash
-pnpm --filter @coding-agent/core test -- agent-config-store
+pnpm --filter @potato/core test -- agent-config-store
 ```
 
 Expected: fails because `AgentConfigStore` does not exist.
@@ -159,7 +159,7 @@ export class FileAgentConfigStore implements AgentConfigStore {
   private readonly configPath: string;
 
   constructor(private readonly workspacePath: string) {
-    this.configPath = join(workspacePath, ".coding-agent", "config.json");
+    this.configPath = join(workspacePath, ".potato", "config.json");
   }
 
   async load(): Promise<AgentConfig> {
@@ -198,7 +198,7 @@ export { FileAgentConfigStore, type AgentConfigStore } from "./config/AgentConfi
 Run:
 
 ```bash
-pnpm --filter @coding-agent/core test -- agent-config-store
+pnpm --filter @potato/core test -- agent-config-store
 ```
 
 Expected: tests pass.
@@ -217,7 +217,7 @@ Create `core/tests/agent-session-factory.test.ts`:
 
 ```ts
 import { describe, expect, it } from "vitest";
-import type { AgentEvent } from "@coding-agent/protocol";
+import type { AgentEvent } from "@potato/protocol";
 import type { PiSessionAdapter } from "../src/pi/PiSessionAdapter.js";
 import { AgentSessionFactory } from "../src/session/AgentSessionFactory.js";
 
@@ -274,7 +274,7 @@ describe("AgentSessionFactory", () => {
 Run:
 
 ```bash
-pnpm --filter @coding-agent/core test -- agent-session-factory
+pnpm --filter @potato/core test -- agent-session-factory
 ```
 
 Expected: fails because `AgentSessionFactory` does not exist.
@@ -284,7 +284,7 @@ Expected: fails because `AgentSessionFactory` does not exist.
 Create `core/src/session/AgentSession.ts`:
 
 ```ts
-import type { AgentEvent } from "@coding-agent/protocol";
+import type { AgentEvent } from "@potato/protocol";
 import type { PiSessionAdapter } from "../pi/PiSessionAdapter.js";
 
 export class AgentSession {
@@ -344,7 +344,7 @@ export { AgentSessionFactory } from "./session/AgentSessionFactory.js";
 Run:
 
 ```bash
-pnpm --filter @coding-agent/core test -- agent-session-factory
+pnpm --filter @potato/core test -- agent-session-factory
 ```
 
 Expected: tests pass.
@@ -361,7 +361,7 @@ Modify `cli/tests/chat-command.test.ts` to import `AgentSession` and pass a core
 
 ```ts
 import { describe, expect, it, vi } from "vitest";
-import { AgentSession, type PiSessionAdapter } from "@coding-agent/core";
+import { AgentSession, type PiSessionAdapter } from "@potato/core";
 import { chatCommand } from "../src/commands/chat.js";
 ```
 
@@ -376,7 +376,7 @@ createSession: () => new AgentSession(adapter),
 Run:
 
 ```bash
-pnpm --filter @coding-agent/cli test -- chat-command
+pnpm --filter @potato/cli test -- chat-command
 ```
 
 Expected: fails because `chatCommand` does not accept `createSession`.
@@ -387,7 +387,7 @@ Modify `cli/src/commands/chat.ts`:
 
 ```ts
 import { input } from "@inquirer/prompts";
-import { AgentSessionFactory, type AgentConfig, type AgentSession } from "@coding-agent/core";
+import { AgentSessionFactory, type AgentConfig, type AgentSession } from "@potato/core";
 import { EventStreamRenderer } from "../ui/EventStreamRenderer.js";
 
 export type ChatCommandOptions = AgentConfig & {
@@ -449,7 +449,7 @@ export async function chatCommand(options: ChatCommandOptions = {}): Promise<voi
 Run:
 
 ```bash
-pnpm --filter @coding-agent/cli test -- chat-command
+pnpm --filter @potato/cli test -- chat-command
 ```
 
 Expected: tests pass.
@@ -470,8 +470,8 @@ Expected: tests pass.
 Run:
 
 ```bash
-pnpm --filter @coding-agent/cli add ink react
-pnpm --filter @coding-agent/cli add -D @types/react
+pnpm --filter @potato/cli add ink react
+pnpm --filter @potato/cli add -D @types/react
 ```
 
 Expected: dependencies added to `cli/package.json` and lockfile updated.
@@ -521,7 +521,7 @@ describe("runTuiCommand", () => {
 Run:
 
 ```bash
-pnpm --filter @coding-agent/cli test -- tui-command
+pnpm --filter @potato/cli test -- tui-command
 ```
 
 Expected: fails because `commands/tui` does not exist.
@@ -533,7 +533,7 @@ Create `cli/src/ui/AgentTui.tsx`:
 ```tsx
 import React, { useState } from "react";
 import { Box, Text, useApp, useInput } from "ink";
-import type { AgentConfig, AgentSession } from "@coding-agent/core";
+import type { AgentConfig, AgentSession } from "@potato/core";
 import { EventStreamRenderer } from "./EventStreamRenderer.js";
 
 export type AgentTuiProps = {
@@ -610,7 +610,7 @@ Create `cli/src/commands/tui.tsx`:
 ```tsx
 import React from "react";
 import { render } from "ink";
-import type { AgentConfig } from "@coding-agent/core";
+import type { AgentConfig } from "@potato/core";
 import { AgentTui } from "../ui/AgentTui.js";
 
 export type TuiCommandOptions = AgentConfig & {
@@ -688,7 +688,7 @@ program
 Run:
 
 ```bash
-pnpm --filter @coding-agent/cli test -- tui-command
+pnpm --filter @potato/cli test -- tui-command
 ```
 
 Expected: tests pass.
@@ -711,7 +711,7 @@ Update `wiki/project-state.md` M4 section with:
 - `pnpm typecheck` 通过。
 - `pnpm test` 通过。
 - `pnpm build` 通过。
-- `pnpm --filter @coding-agent/cli dev --help` 可看到默认入口和兼容命令。
+- `pnpm --filter @potato/cli dev --help` 可看到默认入口和兼容命令。
 ```
 
 - [ ] **Step 2: Run full workspace verification**
@@ -722,7 +722,7 @@ Run:
 pnpm typecheck
 pnpm test
 pnpm build
-pnpm --filter @coding-agent/cli dev --help
+pnpm --filter @potato/cli dev --help
 ```
 
 Expected: all commands pass.

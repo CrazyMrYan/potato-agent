@@ -27,7 +27,7 @@ describe("FileAgentConfigStore", () => {
         apiKey: "secret"
       });
 
-      const raw = await readFile(join(workspace, ".coding-agent", "config.json"), "utf8");
+      const raw = await readFile(join(workspace, ".potato", "config.json"), "utf8");
       expect(JSON.parse(raw)).toEqual({
         provider: "deepseek",
         model: "deepseek-reasoner",
@@ -62,7 +62,7 @@ describe("ensureDefaultAgentConfig", () => {
       const config = await ensureDefaultAgentConfig(new FileAgentConfigStore(workspace));
 
       expect(config).toEqual({});
-      const raw = await readFile(join(workspace, ".coding-agent", "config.json"), "utf8");
+      const raw = await readFile(join(workspace, ".potato", "config.json"), "utf8");
       expect(JSON.parse(raw)).toEqual({});
     } finally {
       await rm(workspace, { recursive: true, force: true });

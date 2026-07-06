@@ -1,4 +1,4 @@
-# potato-agent
+# potato
 
 马铃薯，一个面向开发者的编码智能体产品。
 

@@ -1,4 +1,4 @@
-import type { AgentEvent, RunTaskInput } from "@coding-agent/protocol";
+import type { AgentEvent, RunTaskInput } from "@potato/protocol";
 
 export interface AgentGateway {
   runTask(input: RunTaskInput): AsyncIterable<AgentEvent>;

@@ -7,7 +7,7 @@ import {
   mergeAgentConfig,
   resolveDefaultWorkspacePath,
   type AgentConfig
-} from "@coding-agent/core";
+} from "@potato/core";
 import { AgentTui } from "../ui/AgentTui.js";
 
 export type TuiCommandOptions = AgentConfig & {

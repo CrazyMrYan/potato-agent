@@ -1,4 +1,4 @@
-import type { AgentEvent, ChangeSet, RunTaskInput } from "@coding-agent/protocol";
+import type { AgentEvent, ChangeSet, RunTaskInput } from "@potato/protocol";
 
 export type TraceEntry =
   | { timestamp: string; taskId: string; kind: "task.input"; input: RunTaskInput }

@@ -26,18 +26,18 @@ importers:
 
   cli:
     dependencies:
-      '@coding-agent/core':
-        specifier: workspace:*
-        version: link:../core
-      '@coding-agent/protocol':
-        specifier: workspace:*
-        version: link:../protocol
       '@earendil-works/pi-coding-agent':
         specifier: ^0.80.3
         version: 0.80.3(ws@8.21.0)(zod@4.4.3)
       '@inquirer/prompts':
         specifier: ^8.5.2
         version: 8.5.2(@types/node@26.1.0)
+      '@potato/core':
+        specifier: workspace:*
+        version: link:../core
+      '@potato/protocol':
+        specifier: workspace:*
+        version: link:../protocol
       commander:
         specifier: ^15.0.0
         version: 15.0.0
@@ -50,9 +50,6 @@ importers:
       react:
         specifier: ^19.2.7
         version: 19.2.7
-      react-devtools-core:
-        specifier: ^6.1.5
-        version: 6.1.5
     devDependencies:
       '@types/node':
         specifier: ^26.1.0
@@ -75,12 +72,12 @@ importers:
 
   core:
     dependencies:
-      '@coding-agent/protocol':
-        specifier: workspace:*
-        version: link:../protocol
       '@earendil-works/pi-coding-agent':
         specifier: ^0.80.3
         version: 0.80.3(ws@8.21.0)(zod@4.4.3)
+      '@potato/protocol':
+        specifier: workspace:*
+        version: link:../protocol
 
   protocol:
     devDependencies:
@@ -2816,6 +2813,7 @@ snapshots:
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
+    optional: true
 
   react-reconciler@0.33.0(react@19.2.7):
     dependencies:
@@ -2868,7 +2866,8 @@ snapshots:
 
   shebang-regex@3.0.0: {}
 
-  shell-quote@1.9.0: {}
+  shell-quote@1.9.0:
+    optional: true
 
   siginfo@2.0.0: {}
 
@@ -3001,7 +3000,8 @@ snapshots:
       string-width: 8.2.1
       strip-ansi: 7.2.0
 
-  ws@7.5.11: {}
+  ws@7.5.11:
+    optional: true
 
   ws@8.21.0: {}
 

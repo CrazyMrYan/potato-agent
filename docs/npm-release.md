@@ -1,6 +1,6 @@
 # NPM Release
 
-This project publishes the CLI as `@coding-agent/cli`.
+This project publishes the CLI as `@potato/cli`.
 
 The npm release package is built into `.release/npm/cli`. It contains a bundled, minified CLI entrypoint instead of the TypeScript source tree.
 
@@ -34,6 +34,16 @@ package.json
 README.md
 ```
 
+## Run Built CLI Directly
+
+The release bundle keeps `@earendil-works/pi-coding-agent` as an external production dependency, so install release dependencies before running `dist/cli.js` directly:
+
+```bash
+cd .release/npm/cli
+npm install --omit=dev --ignore-scripts
+node dist/cli.js --help
+```
+
 ## Local Install Test
 
 Create a local tarball:
@@ -46,15 +56,15 @@ npm pack
 Install it globally from the generated tarball:
 
 ```bash
-npm install -g ./coding-agent-cli-0.1.0.tgz
-agent --help
-agent
+npm install -g ./potato-cli-0.1.0.tgz
+potato --help
+potato
 ```
 
 Or test through `npx` from the local tarball:
 
 ```bash
-npx ./coding-agent-cli-0.1.0.tgz --help
+npx ./potato-cli-0.1.0.tgz --help
 ```
 
 ## Publish
@@ -77,24 +87,24 @@ npm publish --access public
 Run with `npx`:
 
 ```bash
-npx @coding-agent/cli --help
-npx @coding-agent/cli
+npx @potato/cli --help
+npx @potato/cli
 ```
 
 Install globally:
 
 ```bash
-npm install -g @coding-agent/cli
-agent --help
-agent
+npm install -g @potato/cli
+potato --help
+potato
 ```
 
 Run one-shot commands:
 
 ```bash
-agent run "review this repository"
-agent diff
-agent trace
+potato run "review this repository"
+potato diff
+potato trace
 ```
 
 ## Notes

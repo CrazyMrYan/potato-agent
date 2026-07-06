@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { AgentEvent } from "@coding-agent/protocol";
+import type { AgentEvent } from "@potato/protocol";
 import type { PiSessionAdapter } from "../src/pi/PiSessionAdapter.js";
 import { AgentSessionFactory } from "../src/session/AgentSessionFactory.js";
 import type { TraceEntry, TraceStore } from "../src/trace/TraceStore.js";

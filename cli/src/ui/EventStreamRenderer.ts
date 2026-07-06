@@ -1,4 +1,4 @@
-import type { AgentEvent } from "@coding-agent/protocol";
+import type { AgentEvent } from "@potato/protocol";
 import pc from "picocolors";
 
 export type EventStreamRendererOptions = {

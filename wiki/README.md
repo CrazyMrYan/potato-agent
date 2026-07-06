@@ -17,6 +17,7 @@
 从这里开始：
 
 - [项目阶段状态](project-state.md)
+- [备忘录](memo.md)
 - [架构设计](architecture.md)
 - [技术设计](technical-design.md)
 - [第一阶段技术方案](technical-plan-mvp.md)

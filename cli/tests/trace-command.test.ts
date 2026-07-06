@@ -9,7 +9,7 @@ describe("trace command", () => {
       write,
       traceStore: {
         async list() {
-          return [{ taskId: "task_1", path: "/repo/.coding-agent/traces/task_1.jsonl", updatedAt: "2026-07-04T00:00:00.000Z", entries: 3 }];
+          return [{ taskId: "task_1", path: "/repo/.potato/traces/task_1.jsonl", updatedAt: "2026-07-04T00:00:00.000Z", entries: 3 }];
         },
         async read() {
           return [];
@@ -19,7 +19,7 @@ describe("trace command", () => {
     });
 
     expect(write).toHaveBeenCalledWith("task_1 3 entries 2026-07-04T00:00:00.000Z");
-    expect(write).toHaveBeenCalledWith("Use `agent trace latest` or `agent trace <taskId>` to inspect entries.");
+    expect(write).toHaveBeenCalledWith("Use `potato trace latest` or `potato trace <taskId>` to inspect entries.");
   });
 
   it("resolves the default workspace before listing traces", async () => {
@@ -65,7 +65,7 @@ describe("trace command", () => {
       }
     });
 
-    expect(write).toHaveBeenCalledWith("No traces yet. Run an agent task first with `agent run` or the TUI.");
+    expect(write).toHaveBeenCalledWith("No traces yet. Run an potato task first with `potato run` or the TUI.");
   });
 
   it("prints raw trace entries for a task id", async () => {
@@ -97,7 +97,7 @@ describe("trace command", () => {
       write,
       traceStore: {
         async list() {
-          return [{ taskId: "task_1", path: "/repo/.coding-agent/traces/task_1.jsonl", updatedAt: "2026-07-04T00:00:00.000Z", entries: 4 }];
+          return [{ taskId: "task_1", path: "/repo/.potato/traces/task_1.jsonl", updatedAt: "2026-07-04T00:00:00.000Z", entries: 4 }];
         },
         async read(taskId: string) {
           return [

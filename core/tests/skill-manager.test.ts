@@ -33,7 +33,7 @@ describe("SkillManager", () => {
 
       expect(skill?.source).toBe("builtin");
       expect(skill?.path).not.toMatch(/^builtin:/);
-      expect(skill?.path).toBe(join(workspace, ".coding-agent", "skills", ".builtin", "systematic-debugging"));
+      expect(skill?.path).toBe(join(workspace, ".potato", "skills", ".builtin", "systematic-debugging"));
       await expect(readFile(join(skill?.path ?? "", "SKILL.md"), "utf8")).resolves.toContain("name: systematic-debugging");
     } finally {
       await rm(workspace, { recursive: true, force: true });
@@ -53,7 +53,7 @@ describe("SkillManager", () => {
       const skill = skills.find((item) => item.id === "systematic-debugging");
 
       expect(skill?.enabled).toBe(false);
-      expect(skill?.path).toBe(join(workspace, ".coding-agent", "skills", ".builtin", "systematic-debugging"));
+      expect(skill?.path).toBe(join(workspace, ".potato", "skills", ".builtin", "systematic-debugging"));
     } finally {
       await rm(workspace, { recursive: true, force: true });
     }
@@ -93,7 +93,7 @@ describe("SkillManager", () => {
         repoUrl: "https://example.com/remote-review.git",
         enabled: true
       });
-      expect(installed.path).toBe(join(workspace, ".coding-agent", "skills", "remote-review"));
+      expect(installed.path).toBe(join(workspace, ".potato", "skills", "remote-review"));
       expect(clone).toHaveBeenCalledWith("https://example.com/remote-review.git", installed.path);
     } finally {
       await rm(workspace, { recursive: true, force: true });

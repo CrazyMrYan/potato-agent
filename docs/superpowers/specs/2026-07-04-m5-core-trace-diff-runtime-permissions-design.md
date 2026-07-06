@@ -2,12 +2,12 @@
 
 ## Context
 
-The project has completed the M4 CLI/TUI and core runtime configuration work. The next stage should focus on capabilities that make a coding agent trustworthy in real repositories:
+The project has completed the M4 CLI/TUI and core runtime configuration work. The next stage should focus on capabilities that make a coding potato trustworthy in real repositories:
 
 - the user can understand what happened;
 - the product can replay and debug a task;
 - changed files and diffs are visible;
-- tool access is governed by project-owned policy, not hidden inside the underlying agent engine.
+- tool access is governed by project-owned policy, not hidden inside the underlying potato engine.
 
 The current default execution path is `AgentGateway -> AgentOrchestrator -> PiRpcAdapter -> Pi RPC subprocess`. This path is useful and should remain available. Its limitation is that Pi RPC still owns the real tool execution boundary. M5 should therefore add product-owned trace/diff capabilities on the stable path, while adding a switchable SDK/runtime permission path that proves whether tool calls can be intercepted by `core/`.
 
@@ -15,7 +15,7 @@ The current default execution path is `AgentGateway -> AgentOrchestrator -> PiRp
 
 The coding agent's core capabilities, in priority order, are:
 
-1. Agent execution loop: accept a task, invoke the underlying agent engine, and emit stable events.
+1. Agent execution loop: accept a task, invoke the underlying potato engine, and emit stable events.
 2. Multi-turn session: keep one session alive across multiple prompts.
 3. Observable event stream: expose assistant text, thinking, tool starts, tool finishes, failure, and completion.
 4. Runtime configuration: centralize provider, model, API key, system prompt, skills, MCP server descriptions, tool allow/deny, and permission policy in `core/`.
@@ -32,7 +32,7 @@ M5 implements three production capabilities and one aggressive validation path:
 
 1. `JsonlTraceStore` in `core/`.
 2. Git-backed `DiffService` in `core/`.
-3. CLI commands `agent trace` and `agent diff`.
+3. CLI commands `potato trace` and `potato diff`.
 4. A switchable runtime/SDK permission path that attempts to route tool calls through `ToolBoundary`.
 
 The default `PiRpcAdapter` remains available. M5 must not claim full permission control for the RPC path unless the implementation can prove that `core/` is making the final tool decision.
@@ -65,7 +65,7 @@ CLI/TUI
 `TraceStore` records append-only JSONL entries under:
 
 ```text
-<workspace>/.coding-agent/traces/<taskId>.jsonl
+<workspace>/.potato/traces/<taskId>.jsonl
 ```
 
 Each entry includes:
@@ -112,13 +112,13 @@ The orchestrator emits `diff.produced` after adapter execution completes. If dif
 
 ### CLI Commands
 
-`agent diff`:
+`potato diff`:
 
 - defaults to the current workspace;
 - prints a compact file list and optional patch text;
 - reuses `DiffService`.
 
-`agent trace`:
+`potato trace`:
 
 - lists recent traces by default;
 - supports viewing a trace by task id;
@@ -163,7 +163,7 @@ If interception is not possible with the available SDK/RPC API, M5 should keep t
 
 ## Data Flow
 
-For `agent run` and TUI task execution:
+For `potato run` and TUI task execution:
 
 1. CLI creates `RunTaskInput`.
 2. `AgentGateway` calls `AgentOrchestrator`.
@@ -175,9 +175,9 @@ For `agent run` and TUI task execution:
 8. Orchestrator writes diff trace entry and yields `diff.produced` when appropriate.
 9. Orchestrator writes final trace entry.
 
-For `agent diff`, CLI calls `DiffService` directly through a small command wrapper.
+For `potato diff`, CLI calls `DiffService` directly through a small command wrapper.
 
-For `agent trace`, CLI calls a trace reader API that summarizes JSONL files.
+For `potato trace`, CLI calls a trace reader API that summarizes JSONL files.
 
 ## Error Handling
 
@@ -198,27 +198,27 @@ Core tests:
 
 CLI tests:
 
-- `agent diff` prints changed files.
-- `agent trace` lists and reads trace files.
+- `potato diff` prints changed files.
+- `potato trace` lists and reads trace files.
 - `run` still renders existing event output.
 
 Validation commands:
 
 ```text
-pnpm --filter @coding-agent/protocol test
-pnpm --filter @coding-agent/core test
-pnpm --filter @coding-agent/cli test
-pnpm --filter @coding-agent/core typecheck
-pnpm --filter @coding-agent/cli typecheck
+pnpm --filter @potato/protocol test
+pnpm --filter @potato/core test
+pnpm --filter @potato/cli test
+pnpm --filter @potato/core typecheck
+pnpm --filter @potato/cli typecheck
 ```
 
 ## Acceptance Criteria
 
 M5 is complete when:
 
-- `agent run` and TUI task execution can persist JSONL traces.
-- `agent diff` shows Git-backed file changes.
-- `agent trace` can list and inspect task traces.
+- `potato run` and TUI task execution can persist JSONL traces.
+- `potato diff` shows Git-backed file changes.
+- `potato trace` can list and inspect task traces.
 - task completion can emit `diff.produced`.
 - `ToolBoundary` has tested policy behavior independent of Pi.
 - the runtime/SDK path records a factual capability report.

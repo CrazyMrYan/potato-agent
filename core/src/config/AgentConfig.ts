@@ -164,7 +164,7 @@ function withoutUndefinedRecord<T extends Record<string, unknown>>(value: T): T 
 }
 
 function ensureManualApprovalExtension(workspacePath: string): string {
-  const runtimeDir = join(workspacePath, ".coding-agent", "runtime");
+  const runtimeDir = join(workspacePath, ".potato", "runtime");
   const extensionPath = join(runtimeDir, "manual-approval-extension.ts");
   mkdirSync(runtimeDir, { recursive: true });
   writeFileSync(extensionPath, MANUAL_APPROVAL_EXTENSION_SOURCE);

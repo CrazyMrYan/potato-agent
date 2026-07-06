@@ -1,4 +1,4 @@
-import type { AgentEvent, RunTaskInput } from "@coding-agent/protocol";
+import type { AgentEvent, RunTaskInput } from "@potato/protocol";
 import type { PiAdapter } from "./PiAdapter.js";
 
 export class FakePiAdapter implements PiAdapter {

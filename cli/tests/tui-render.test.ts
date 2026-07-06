@@ -7,7 +7,7 @@ import { describe, expect, it, vi } from "vitest";
 import { AgentTui, applyInlineSkillMentions, buildRuntimeSessionConfig, filterCompletionCandidates, listWorkspaceFiles } from "../src/ui/AgentTui.js";
 
 describe("AgentTui render", () => {
-  it("renders a cleaner agent workspace instead of the old raw sections", () => {
+  it("renders a cleaner potato workspace instead of the old raw sections", () => {
     const { lastFrame } = render(
       React.createElement(AgentTui, {
         config: {
@@ -147,7 +147,7 @@ describe("AgentTui render", () => {
     }
   });
 
-  it("renders mode, skill, mcp, and agent command entries", async () => {
+  it("renders mode, skill, mcp, and potato command entries", async () => {
     const rendered = render(
       React.createElement(AgentTui, {
         config: {
@@ -237,8 +237,8 @@ describe("AgentTui render", () => {
         {
           async list() {
             return [
-              { id: "systematic-debugging", name: "systematic-debugging", path: "/repo/.coding-agent/skills/.builtin/systematic-debugging", source: "builtin", enabled: true },
-              { id: "skill-creator", name: "skill-creator", path: "/repo/.coding-agent/skills/.builtin/skill-creator", source: "builtin", enabled: false }
+              { id: "systematic-debugging", name: "systematic-debugging", path: "/repo/.potato/skills/.builtin/systematic-debugging", source: "builtin", enabled: true },
+              { id: "skill-creator", name: "skill-creator", path: "/repo/.potato/skills/.builtin/skill-creator", source: "builtin", enabled: false }
             ];
           }
         }
@@ -246,8 +246,8 @@ describe("AgentTui render", () => {
     ).resolves.toMatchObject({
       workspacePath: "/repo",
       skills: [
-        { id: "systematic-debugging", name: "systematic-debugging", path: "/repo/.coding-agent/skills/.builtin/systematic-debugging", source: "builtin", enabled: true },
-        { id: "skill-creator", name: "skill-creator", path: "/repo/.coding-agent/skills/.builtin/skill-creator", source: "builtin", enabled: false }
+        { id: "systematic-debugging", name: "systematic-debugging", path: "/repo/.potato/skills/.builtin/systematic-debugging", source: "builtin", enabled: true },
+        { id: "skill-creator", name: "skill-creator", path: "/repo/.potato/skills/.builtin/skill-creator", source: "builtin", enabled: false }
       ]
     });
   });

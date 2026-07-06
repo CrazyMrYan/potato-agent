@@ -1,4 +1,4 @@
-import type { AgentEvent, RunTaskInput } from "@coding-agent/protocol";
+import type { AgentEvent, RunTaskInput } from "@potato/protocol";
 import type { PiSessionAdapter } from "../pi/PiSessionAdapter.js";
 import type { SubAgentConfig } from "../subagent/SubAgentConfig.js";
 import type { TraceStore } from "../trace/TraceStore.js";

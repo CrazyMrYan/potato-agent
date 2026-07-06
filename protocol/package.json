@@ -1,5 +1,5 @@
 {
-  "name": "@coding-agent/protocol",
+  "name": "@potato/protocol",
   "version": "0.1.0",
   "type": "module",
   "main": "dist/index.js",

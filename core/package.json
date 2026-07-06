@@ -1,5 +1,5 @@
 {
-  "name": "@coding-agent/core",
+  "name": "@potato/core",
   "version": "0.1.0",
   "type": "module",
   "main": "dist/index.js",
@@ -13,7 +13,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@coding-agent/protocol": "workspace:*",
+    "@potato/protocol": "workspace:*",
     "@earendil-works/pi-coding-agent": "^0.80.3"
   }
 }

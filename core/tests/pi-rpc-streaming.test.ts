@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { AgentEvent, RunTaskInput } from "@coding-agent/protocol";
+import type { AgentEvent, RunTaskInput } from "@potato/protocol";
 import { PiRpcAdapter, type PiRpcClientLike } from "../src/pi/PiRpcAdapter.js";
 
 class FakeRpcClient implements PiRpcClientLike {
@@ -75,8 +75,8 @@ describe("PiRpcAdapter streaming", () => {
         timeoutMs: 1000,
         permissionPolicy: { mode: "confirm" },
         skills: [
-          { id: "debug", name: "debug", path: "/repo/.coding-agent/skills/.builtin/debug", source: "builtin", enabled: true },
-          { id: "off", name: "off", path: "/repo/.coding-agent/skills/.builtin/off", source: "builtin", enabled: false }
+          { id: "debug", name: "debug", path: "/repo/.potato/skills/.builtin/debug", source: "builtin", enabled: true },
+          { id: "off", name: "off", path: "/repo/.potato/skills/.builtin/off", source: "builtin", enabled: false }
         ]
       },
       {
@@ -100,7 +100,7 @@ describe("PiRpcAdapter streaming", () => {
     await iterator.next();
 
     expect(clientOptions).toMatchObject({
-      args: expect.arrayContaining(["--no-skills", "--skill", "/repo/.coding-agent/skills/.builtin/debug", "--tools", "read,ls,grep,find,bash,edit,write", "--extension"])
+      args: expect.arrayContaining(["--no-skills", "--skill", "/repo/.potato/skills/.builtin/debug", "--tools", "read,ls,grep,find,bash,edit,write", "--extension"])
     });
   });
 

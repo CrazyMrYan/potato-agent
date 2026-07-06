@@ -13,7 +13,7 @@ export class FileAgentConfigStore implements AgentConfigStore {
   private readonly configPath: string;
 
   constructor(private readonly workspacePath: string) {
-    this.configPath = join(workspacePath, ".coding-agent", "config.json");
+    this.configPath = join(workspacePath, ".potato", "config.json");
   }
 
   async load(): Promise<AgentConfig> {

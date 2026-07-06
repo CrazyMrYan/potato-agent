@@ -37,9 +37,9 @@ const releasePackage = {
   name: cliPackage.name,
   version: cliPackage.version,
   type: "module",
-  description: "Coding Agent CLI",
+  description: "Potato CLI",
   bin: {
-    agent: "./dist/cli.js"
+    potato: "./dist/cli.js"
   },
   files: [
     "dist",

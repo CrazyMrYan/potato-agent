@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { AgentEvent, ChangeSet, RunTaskInput } from "@coding-agent/protocol";
+import type { AgentEvent, ChangeSet, RunTaskInput } from "@potato/protocol";
 import { AgentLoop } from "../src/loop/AgentLoop.js";
 import type { DiffService } from "../src/diff/DiffService.js";
 import type { PiAdapter } from "../src/pi/PiAdapter.js";

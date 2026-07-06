@@ -1,5 +1,5 @@
 import { input } from "@inquirer/prompts";
-import { AgentSessionFactory, resolveDefaultWorkspacePath, type AgentConfig, type AgentSession } from "@coding-agent/core";
+import { AgentSessionFactory, resolveDefaultWorkspacePath, type AgentConfig, type AgentSession } from "@potato/core";
 import { EventStreamRenderer } from "../ui/EventStreamRenderer.js";
 
 export type ChatCommandOptions = AgentConfig & {

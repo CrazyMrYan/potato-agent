@@ -10,8 +10,8 @@ import { formatCliError } from "./cliError.js";
 const program = new Command();
 
 program
-  .name("agent")
-  .description("编码智能体 CLI")
+  .name("potato")
+  .description("Potato CLI")
   .version("0.1.0")
   .action(async () => {
     try {

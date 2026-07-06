@@ -7,7 +7,7 @@ export const DEFAULT_SUB_AGENTS: SubAgentConfig[] = [
   {
     id: "default",
     name: "Default Agent",
-    description: "Use the main coding agent without a specialized role.",
+    description: "Use the main coding potato without a specialized role.",
     enabled: true
   },
   {

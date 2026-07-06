@@ -77,13 +77,13 @@ flowchart TB
 当前代码采用 pnpm workspace，分为三个可独立理解的包：
 
 ```text
-protocol/  @coding-agent/protocol
+protocol/  @potato/protocol
   稳定协议层，只放类型契约。
 
-core/      @coding-agent/core
+core/      @potato/core
   Agent 产品能力层，包含配置、会话、编排、Pi 适配、trace、diff、skill、MCP、SubAgent 和权限边界。
 
-cli/       @coding-agent/cli
+cli/       @potato/cli
   用户入口层，包含 commander 命令、Ink TUI、输入框、菜单和终端事件渲染。
 ```
 
@@ -91,10 +91,10 @@ cli/       @coding-agent/cli
 
 ```mermaid
 flowchart LR
-    CLI["@coding-agent/cli<br/>命令 / TUI / 输入 / 展示"] --> Core["@coding-agent/core<br/>会话 / 编排 / Pi 适配 / 能力管理"]
-    CLI --> Protocol["@coding-agent/protocol<br/>事件 / 任务 / 审批 / diff 类型"]
+    CLI["@potato/cli<br/>命令 / TUI / 输入 / 展示"] --> Core["@potato/core<br/>会话 / 编排 / Pi 适配 / 能力管理"]
+    CLI --> Protocol["@potato/protocol<br/>事件 / 任务 / 审批 / diff 类型"]
     Core --> Protocol
-    Core --> Pi["@earendil-works/pi-coding-agent<br/>Pi RPC / 底层 agent 执行"]
+    Core --> Pi["@earendil-works/pi-coding-agent<br/>Pi RPC / 底层 potato 执行"]
 
     Protocol -. "不依赖业务实现" .-> None1["无下游依赖"]
 ```
@@ -112,7 +112,7 @@ flowchart LR
 
 ```mermaid
 flowchart TB
-    Protocol["@coding-agent/protocol"]
+    Protocol["@potato/protocol"]
     Protocol --> Task["task.ts<br/>RunTaskInput / TaskMode / ApprovalMode"]
     Protocol --> Events["events.ts<br/>AgentEvent union<br/>task / step / tool / approval / subagent / diff / verification"]
     Protocol --> Approval["approval.ts<br/>ApprovalRequest / ApprovalDecision"]
@@ -133,7 +133,7 @@ flowchart TB
 
 ```mermaid
 flowchart TB
-    Core["@coding-agent/core"]
+    Core["@potato/core"]
 
     Config["config/<br/>AgentConfig / ConfigStore / Workspace"] --> SessionFactory["session/AgentSessionFactory"]
     Skills["skills/SkillManager"] --> SessionFactory
@@ -142,7 +142,7 @@ flowchart TB
     SessionFactory --> Session["session/AgentSession<br/>start / send / approve / pause"]
     Session --> PiAdapter["pi/PiSessionAdapter"]
     PiAdapter --> PiMapper["pi/PiEventMapper"]
-    PiMapper --> ProtocolEvents["@coding-agent/protocol events"]
+    PiMapper --> ProtocolEvents["@potato/protocol events"]
 
     Gateway["gateway/<br/>AgentGateway / LocalAgentGateway"] --> Orchestrator["orchestrator/AgentOrchestrator"]
     Orchestrator --> Loop["loop/AgentLoop<br/>lifecycle / trace / diff / final events"]
@@ -173,7 +173,7 @@ flowchart TB
 
 ```mermaid
 flowchart TB
-    CLI["@coding-agent/cli"]
+    CLI["@potato/cli"]
 
     Entry["cli.ts<br/>commander 入口"] --> Commands["commands/"]
     Commands --> Run["run.ts<br/>一次性任务"]
@@ -186,14 +186,14 @@ flowchart TB
     AgentTui --> PromptEditor["ui/PromptEditor.ts<br/>光标 / 补全 / @file / $skill token"]
     AgentTui --> Renderer["ui/EventStreamRenderer.ts<br/>AgentEvent -> 终端行"]
 
-    Commands --> Core["@coding-agent/core"]
+    Commands --> Core["@potato/core"]
     AgentTui --> Core
-    Renderer --> Protocol["@coding-agent/protocol"]
+    Renderer --> Protocol["@potato/protocol"]
 ```
 
 主要职责：
 
-- `cli.ts`：定义 `agent`、`agent run`、`agent chat`、`agent diff`、`agent trace`。
+- `cli.ts`：定义 `potato`、`potato run`、`potato chat`、`potato diff`、`potato trace`。
 - `commands/`：命令模式的薄封装，负责参数解析后的业务调用。
 - `ui/AgentTui.tsx`：交互式 TUI 状态机，处理 `/mode`、`/skill`、`/mcp`、`/agent`、审批、暂停、diff 展示。
 - `ui/PromptEditor.ts`：输入框编辑模型，支持光标、补全检测、`@file`、`$skill`。
@@ -202,7 +202,7 @@ flowchart TB
 CLI 不应该直接：
 
 - 解析 Pi 原始事件。
-- 决定 agent 编排策略。
+- 决定 potato 编排策略。
 - 直接读取或修改 core 的持久化结构。
 - 绕过 core 去实现权限、trace、diff、skills 或 SubAgent 逻辑。
 

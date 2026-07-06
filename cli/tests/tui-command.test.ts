@@ -85,7 +85,7 @@ describe("runTuiCommand", () => {
     try {
       await runTuiCommand({ cwd: workspace }, { render });
 
-      const raw = await readFile(join(workspace, ".coding-agent", "config.json"), "utf8");
+      const raw = await readFile(join(workspace, ".potato", "config.json"), "utf8");
       expect(JSON.parse(raw)).toEqual({});
     } finally {
       await rm(workspace, { recursive: true, force: true });

@@ -1,4 +1,4 @@
-import type { RunTaskInput } from "@coding-agent/protocol";
+import type { RunTaskInput } from "@potato/protocol";
 import {
   AgentOrchestrator,
   GitDiffService,
@@ -11,7 +11,7 @@ import {
   resolveDefaultWorkspacePath,
   resolvePiAdapterOptions,
   type TraceStore
-} from "@coding-agent/core";
+} from "@potato/core";
 import { EventStreamRenderer } from "../ui/EventStreamRenderer.js";
 
 export class RenderedTaskFailedError extends Error {

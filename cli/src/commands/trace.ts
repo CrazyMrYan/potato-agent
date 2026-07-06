@@ -1,4 +1,4 @@
-import { JsonlTraceStore, resolveDefaultWorkspacePath, type TraceEntry, type TraceStore } from "@coding-agent/core";
+import { JsonlTraceStore, resolveDefaultWorkspacePath, type TraceEntry, type TraceStore } from "@potato/core";
 
 export type TraceCommandOptions = {
   workspacePath?: string;
@@ -19,14 +19,14 @@ export async function traceCommand(options: TraceCommandOptions = {}): Promise<v
   if (!options.taskId) {
     const traces = await traceStore.list();
     if (traces.length === 0) {
-      write("No traces yet. Run an agent task first with `agent run` or the TUI.");
+      write("No traces yet. Run an potato task first with `potato run` or the TUI.");
       return;
     }
 
     for (const trace of traces) {
       write(`${trace.taskId} ${trace.entries} entries ${trace.updatedAt}`);
     }
-    write("Use `agent trace latest` or `agent trace <taskId>` to inspect entries.");
+    write("Use `potato trace latest` or `potato trace <taskId>` to inspect entries.");
     return;
   }
 

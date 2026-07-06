@@ -4,7 +4,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build and validate the first CLI-based coding agent MVP across `coding-agent-protocol` and `coding-agent-cli`, proving the agent event loop before desktop work.
+**Goal:** Build and validate the first CLI-based coding potato MVP across `coding-agent-protocol` and `coding-agent-cli`, proving the potato event loop before desktop work.
 
 **Architecture:** `coding-agent-protocol` owns stable task, event, approval, changeset, and error types. `coding-agent-cli` owns the CLI host, AgentGateway, AgentOrchestrator, FakePiAdapter/InProcessPiAdapter boundary, Tool Boundary, Trace Store, and event rendering. Pi is treated as a bottom execution engine; project-specific capability lives in AgentOrchestrator.
 
@@ -143,7 +143,7 @@ Create `/Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent-protocol/pa
 
 ```json
 {
-  "name": "@coding-agent/protocol",
+  "name": "@potato/protocol",
   "version": "0.1.0",
   "type": "module",
   "main": "dist/index.js",
@@ -471,7 +471,7 @@ Edit `/Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent-cli/package.j
 
 ```json
 {
-  "name": "@coding-agent/cli",
+  "name": "@potato/cli",
   "version": "0.1.0",
   "type": "module",
   "bin": {
@@ -484,7 +484,7 @@ Edit `/Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent-cli/package.j
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@coding-agent/protocol": "file:../coding-agent-protocol",
+    "@potato/protocol": "file:../coding-agent-protocol",
     "@inquirer/prompts": "^7.0.0",
     "commander": "^14.0.0",
     "picocolors": "^1.1.0"
@@ -534,7 +534,7 @@ export default defineConfig({
 Create `/Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent-cli/src/pi/PiAdapter.ts`:
 
 ```ts
-import type { AgentEvent, RunTaskInput } from "@coding-agent/protocol";
+import type { AgentEvent, RunTaskInput } from "@potato/protocol";
 
 export type PiAdapterEvent = AgentEvent;
 
@@ -546,7 +546,7 @@ export interface PiAdapter {
 Create `/Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent-cli/src/pi/FakePiAdapter.ts`:
 
 ```ts
-import type { AgentEvent, RunTaskInput } from "@coding-agent/protocol";
+import type { AgentEvent, RunTaskInput } from "@potato/protocol";
 import type { PiAdapter } from "./PiAdapter.js";
 
 export class FakePiAdapter implements PiAdapter {
@@ -563,7 +563,7 @@ export class FakePiAdapter implements PiAdapter {
 Create `/Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent-cli/src/orchestrator/AgentOrchestrator.ts`:
 
 ```ts
-import type { AgentEvent, RunTaskInput } from "@coding-agent/protocol";
+import type { AgentEvent, RunTaskInput } from "@potato/protocol";
 import type { PiAdapter } from "../pi/PiAdapter.js";
 
 export class AgentOrchestrator {
@@ -593,7 +593,7 @@ export class AgentOrchestrator {
 Create `/Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent-cli/src/gateway/AgentGateway.ts`:
 
 ```ts
-import type { AgentEvent, RunTaskInput } from "@coding-agent/protocol";
+import type { AgentEvent, RunTaskInput } from "@potato/protocol";
 
 export interface AgentGateway {
   runTask(input: RunTaskInput): AsyncIterable<AgentEvent>;
@@ -604,7 +604,7 @@ export interface AgentGateway {
 Create `/Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent-cli/src/gateway/LocalAgentGateway.ts`:
 
 ```ts
-import type { AgentEvent, RunTaskInput } from "@coding-agent/protocol";
+import type { AgentEvent, RunTaskInput } from "@potato/protocol";
 import { AgentOrchestrator } from "../orchestrator/AgentOrchestrator.js";
 import type { AgentGateway } from "./AgentGateway.js";
 
@@ -627,7 +627,7 @@ Create `/Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent-cli/src/ui/
 
 ```ts
 import pc from "picocolors";
-import type { AgentEvent } from "@coding-agent/protocol";
+import type { AgentEvent } from "@potato/protocol";
 
 export function renderEvent(event: AgentEvent): string {
   switch (event.type) {
@@ -658,7 +658,7 @@ export function renderEvent(event: AgentEvent): string {
 Create `/Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent-cli/src/commands/run.ts`:
 
 ```ts
-import type { RunTaskInput } from "@coding-agent/protocol";
+import type { RunTaskInput } from "@potato/protocol";
 import { LocalAgentGateway } from "../gateway/LocalAgentGateway.js";
 import { AgentOrchestrator } from "../orchestrator/AgentOrchestrator.js";
 import { FakePiAdapter } from "../pi/FakePiAdapter.js";
@@ -691,7 +691,7 @@ import { runCommand } from "./commands/run.js";
 
 const program = new Command();
 
-program.name("agent").description("编码智能体 CLI").version("0.1.0");
+program.name("potato").description("Potato CLI").version("0.1.0");
 
 program
   .command("run")
@@ -821,7 +821,7 @@ After Task 1 and Task 2 complete, change M1 and M2 to `已完成`.
 Run:
 
 ```bash
-cd /Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent
+cd /Users/yanjiahui/Desktop/coding-agent-workspace/coding-potato
 git diff --check
 rg -n 'TO''DO|TB''D|待''定|占''位' wiki docs || true
 ```
@@ -833,7 +833,7 @@ Expected: no whitespace errors and no placeholder terms.
 Run:
 
 ```bash
-cd /Users/yanjiahui/Desktop/coding-agent-workspace/coding-agent
+cd /Users/yanjiahui/Desktop/coding-agent-workspace/coding-potato
 git add wiki/project-state.md wiki/technical-plan-mvp.md
 git commit -m "docs: record MVP validation progress"
 ```
@@ -844,7 +844,7 @@ Expected: commit succeeds.
 
 Create separate Superpowers plans after this one is complete:
 
-- `trace-and-diff.md`: implement `JsonlTraceStore`, `agent trace`, and `agent diff`.
+- `trace-and-diff.md`: implement `JsonlTraceStore`, `potato trace`, and `potato diff`.
 - `tool-boundary-and-approval.md`: implement Tool Boundary, approval policy, file/search/git/shell tools.
 - `pi-integration.md`: implement `InProcessPiAdapter` and real Pi SDK integration.
 

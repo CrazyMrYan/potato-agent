@@ -1,4 +1,4 @@
-import type { AgentEvent } from "@coding-agent/protocol";
+import type { AgentEvent } from "@potato/protocol";
 import { RpcClient, type RpcClientOptions, type RpcExtensionUIResponse } from "@earendil-works/pi-coding-agent";
 import { buildPiRpcArgs } from "../config/AgentConfig.js";
 import { PiEventMapper, type RawPiEvent } from "./PiEventMapper.js";

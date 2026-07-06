@@ -19,7 +19,7 @@ export const DEFAULT_BUILTIN_SKILLS: Required<Pick<AgentSkillConfig, "id" | "nam
 ];
 
 const BUILTIN_SKILL_DESCRIPTIONS: Record<string, string> = {
-  "skill-creator": "Create or improve agent skills with a clear trigger, workflow, and verification notes.",
+  "skill-creator": "Create or improve potato skills with a clear trigger, workflow, and verification notes.",
   "skill-installer": "Install external skills from trusted local paths or Git repositories and verify SKILL.md before enabling.",
   superpowers: "Use disciplined workflows such as planning, debugging, review, and verification when a task calls for them.",
   "systematic-debugging": "Find root cause before changing code. Reproduce the issue, inspect recent changes, form one hypothesis, then verify.",
@@ -89,7 +89,7 @@ export class SkillManager {
 
   private async installGit(repoUrl: string): Promise<AgentSkillConfig> {
     const id = normalizeSkillId(basename(repoUrl).replace(/\.git$/, ""));
-    const destination = join(this.workspacePath, ".coding-agent", "skills", id);
+    const destination = join(this.workspacePath, ".potato", "skills", id);
     await (this.dependencies.clone ?? cloneGit)(repoUrl, destination);
     await assertValidSkill(destination);
     const name = await readSkillName(destination);
@@ -115,7 +115,7 @@ export class SkillManager {
   }
 
   private async materializeBuiltin(id: string): Promise<string> {
-    const destination = join(this.workspacePath, ".coding-agent", "skills", ".builtin", id);
+    const destination = join(this.workspacePath, ".potato", "skills", ".builtin", id);
     await mkdir(destination, { recursive: true });
     await writeFile(join(destination, "SKILL.md"), builtinSkillContent(id), "utf8");
     return destination;

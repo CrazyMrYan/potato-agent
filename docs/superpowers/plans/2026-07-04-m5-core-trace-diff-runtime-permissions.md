@@ -4,7 +4,7 @@
 
 **Goal:** Add JSONL task tracing, Git-backed diff output, trace/diff CLI commands, tested tool permission policy, and a runtime capability reporting path for aggressive permission validation.
 
-**Architecture:** Keep `PiRpcAdapter` as the default working execution path. Put trace, diff, and tool policy in `@coding-agent/core`, with `AgentOrchestrator` applying trace/diff around adapter events. Add a switchable runtime capability reporter that states which permission guarantees are actually enforced.
+**Architecture:** Keep `PiRpcAdapter` as the default working execution path. Put trace, diff, and tool policy in `@potato/core`, with `AgentOrchestrator` applying trace/diff around adapter events. Add a switchable runtime capability reporter that states which permission guarantees are actually enforced.
 
 **Tech Stack:** TypeScript, Node.js built-ins, pnpm workspace, Vitest, commander, Git CLI.
 
@@ -24,8 +24,8 @@
 - Create `core/src/runtime/RuntimeCapabilityReporter.ts`: factual capability report for RPC and future SDK/runtime paths.
 - Create `core/tests/runtime-capability-reporter.test.ts`: capability report tests.
 - Modify `core/src/index.ts`: export new APIs.
-- Create `cli/src/commands/diff.ts`: `agent diff` command handler.
-- Create `cli/src/commands/trace.ts`: `agent trace` command handler.
+- Create `cli/src/commands/diff.ts`: `potato diff` command handler.
+- Create `cli/src/commands/trace.ts`: `potato trace` command handler.
 - Modify `cli/src/cli.ts`: register `diff` and `trace`.
 - Create `cli/tests/diff-command.test.ts`: diff command tests.
 - Create `cli/tests/trace-command.test.ts`: trace command tests.
@@ -108,7 +108,7 @@ describe("JsonlTraceStore", () => {
 Run:
 
 ```bash
-pnpm --filter @coding-agent/core test -- trace-store
+pnpm --filter @potato/core test -- trace-store
 ```
 
 Expected: FAIL because `../src/trace/JsonlTraceStore.js` does not exist.
@@ -118,7 +118,7 @@ Expected: FAIL because `../src/trace/JsonlTraceStore.js` does not exist.
 Create `core/src/trace/TraceStore.ts`:
 
 ```ts
-import type { AgentEvent, ChangeSet, RunTaskInput } from "@coding-agent/protocol";
+import type { AgentEvent, ChangeSet, RunTaskInput } from "@potato/protocol";
 
 export type TraceEntry =
   | { timestamp: string; taskId: string; kind: "task.input"; input: RunTaskInput }
@@ -170,7 +170,7 @@ export class JsonlTraceStore implements TraceStore {
   private readonly traceDir: string;
 
   constructor(private readonly workspacePath: string) {
-    this.traceDir = join(workspacePath, ".coding-agent", "traces");
+    this.traceDir = join(workspacePath, ".potato", "traces");
   }
 
   async append(entry: TraceEntry): Promise<void> {
@@ -243,7 +243,7 @@ export { nowIso } from "./trace/TraceStore.js";
 Run:
 
 ```bash
-pnpm --filter @coding-agent/core test -- trace-store
+pnpm --filter @potato/core test -- trace-store
 ```
 
 Expected: PASS.
@@ -330,7 +330,7 @@ async function initRepo(): Promise<string> {
 Run:
 
 ```bash
-pnpm --filter @coding-agent/core test -- diff-service
+pnpm --filter @potato/core test -- diff-service
 ```
 
 Expected: FAIL because `../src/diff/DiffService.js` does not exist.
@@ -342,7 +342,7 @@ Create `core/src/diff/DiffService.ts`:
 ```ts
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import type { ChangeSet, FileChangeStatus } from "@coding-agent/protocol";
+import type { ChangeSet, FileChangeStatus } from "@potato/protocol";
 
 const execFileAsync = promisify(execFile);
 
@@ -423,7 +423,7 @@ export type { DiffService } from "./diff/DiffService.js";
 Run:
 
 ```bash
-pnpm --filter @coding-agent/core test -- diff-service
+pnpm --filter @potato/core test -- diff-service
 ```
 
 Expected: PASS.
@@ -449,7 +449,7 @@ Replace `core/tests/orchestrator.test.ts` with:
 
 ```ts
 import { describe, expect, it } from "vitest";
-import type { AgentEvent, ChangeSet, RunTaskInput } from "@coding-agent/protocol";
+import type { AgentEvent, ChangeSet, RunTaskInput } from "@potato/protocol";
 import { AgentOrchestrator } from "../src/orchestrator/AgentOrchestrator.js";
 import type { DiffService } from "../src/diff/DiffService.js";
 import type { TraceEntry, TraceStore } from "../src/trace/TraceStore.js";
@@ -543,7 +543,7 @@ class StaticDiffService implements DiffService {
 Run:
 
 ```bash
-pnpm --filter @coding-agent/core test -- orchestrator
+pnpm --filter @potato/core test -- orchestrator
 ```
 
 Expected: FAIL because `AgentOrchestrator` does not accept `traceStore` or `diffService`.
@@ -553,7 +553,7 @@ Expected: FAIL because `AgentOrchestrator` does not accept `traceStore` or `diff
 Modify `core/src/orchestrator/AgentOrchestrator.ts`:
 
 ```ts
-import type { AgentEvent, RunTaskInput } from "@coding-agent/protocol";
+import type { AgentEvent, RunTaskInput } from "@potato/protocol";
 import type { DiffService } from "../diff/DiffService.js";
 import type { PiAdapter } from "../pi/PiAdapter.js";
 import type { TraceStore } from "../trace/TraceStore.js";
@@ -647,7 +647,7 @@ export class AgentOrchestrator {
 Run:
 
 ```bash
-pnpm --filter @coding-agent/core test -- orchestrator
+pnpm --filter @potato/core test -- orchestrator
 ```
 
 Expected: PASS.
@@ -714,7 +714,7 @@ describe("trace command", () => {
       write,
       traceStore: {
         async list() {
-          return [{ taskId: "task_1", path: "/repo/.coding-agent/traces/task_1.jsonl", updatedAt: "2026-07-04T00:00:00.000Z", entries: 3 }];
+          return [{ taskId: "task_1", path: "/repo/.potato/traces/task_1.jsonl", updatedAt: "2026-07-04T00:00:00.000Z", entries: 3 }];
         },
         async read() {
           return [];
@@ -754,7 +754,7 @@ describe("trace command", () => {
 Run:
 
 ```bash
-pnpm --filter @coding-agent/cli test -- diff-command trace-command
+pnpm --filter @potato/cli test -- diff-command trace-command
 ```
 
 Expected: FAIL because command modules do not exist.
@@ -764,7 +764,7 @@ Expected: FAIL because command modules do not exist.
 Create `cli/src/commands/diff.ts`:
 
 ```ts
-import { GitDiffService, type DiffService } from "@coding-agent/core";
+import { GitDiffService, type DiffService } from "@potato/core";
 
 export type DiffCommandOptions = {
   workspacePath?: string;
@@ -798,7 +798,7 @@ export async function diffCommand(options: DiffCommandOptions = {}): Promise<voi
 Create `cli/src/commands/trace.ts`:
 
 ```ts
-import { JsonlTraceStore, type TraceStore } from "@coding-agent/core";
+import { JsonlTraceStore, type TraceStore } from "@potato/core";
 
 export type TraceCommandOptions = {
   workspacePath?: string;
@@ -879,7 +879,7 @@ program
 Run:
 
 ```bash
-pnpm --filter @coding-agent/cli test -- diff-command trace-command
+pnpm --filter @potato/cli test -- diff-command trace-command
 ```
 
 Expected: PASS.
@@ -941,7 +941,7 @@ Append this test to `cli/tests/run-config.test.ts`:
 Run:
 
 ```bash
-pnpm --filter @coding-agent/cli test -- run-config
+pnpm --filter @potato/cli test -- run-config
 ```
 
 Expected: FAIL because `createTraceStore` and `createDiffService` are not part of `RunCommandOptions`.
@@ -961,7 +961,7 @@ import {
   PiRpcAdapter,
   resolvePiAdapterOptions,
   type TraceStore
-} from "@coding-agent/core";
+} from "@potato/core";
 ```
 
 Extend `RunCommandOptions`:
@@ -984,7 +984,7 @@ Replace orchestrator construction:
 Run:
 
 ```bash
-pnpm --filter @coding-agent/cli test -- run-config
+pnpm --filter @potato/cli test -- run-config
 ```
 
 Expected: PASS.
@@ -1047,7 +1047,7 @@ describe("ToolBoundary", () => {
 Run:
 
 ```bash
-pnpm --filter @coding-agent/core test -- tool-boundary
+pnpm --filter @potato/core test -- tool-boundary
 ```
 
 Expected: FAIL because `ToolBoundary` does not exist.
@@ -1139,7 +1139,7 @@ export type { ToolAuthorization, ToolBoundaryDependencies, ToolDecision, ToolReq
 Run:
 
 ```bash
-pnpm --filter @coding-agent/core test -- tool-boundary
+pnpm --filter @potato/core test -- tool-boundary
 ```
 
 Expected: PASS.
@@ -1204,7 +1204,7 @@ describe("RuntimeCapabilityReporter", () => {
 Run:
 
 ```bash
-pnpm --filter @coding-agent/core test -- runtime-capability-reporter
+pnpm --filter @potato/core test -- runtime-capability-reporter
 ```
 
 Expected: FAIL because `RuntimeCapabilityReporter` does not exist.
@@ -1275,7 +1275,7 @@ M5 先把 `ToolBoundary` 作为 core 中可测试的权限决策点落地。`PiR
 Run:
 
 ```bash
-pnpm --filter @coding-agent/core test -- runtime-capability-reporter
+pnpm --filter @potato/core test -- runtime-capability-reporter
 ```
 
 Expected: PASS.
@@ -1299,7 +1299,7 @@ git commit -m "feat: report runtime permission capabilities"
 Run:
 
 ```bash
-pnpm --filter @coding-agent/protocol test
+pnpm --filter @potato/protocol test
 ```
 
 Expected: PASS.
@@ -1309,8 +1309,8 @@ Expected: PASS.
 Run:
 
 ```bash
-pnpm --filter @coding-agent/core test
-pnpm --filter @coding-agent/core typecheck
+pnpm --filter @potato/core test
+pnpm --filter @potato/core typecheck
 ```
 
 Expected: PASS.
@@ -1320,8 +1320,8 @@ Expected: PASS.
 Run:
 
 ```bash
-pnpm --filter @coding-agent/cli test
-pnpm --filter @coding-agent/cli typecheck
+pnpm --filter @potato/cli test
+pnpm --filter @potato/cli typecheck
 ```
 
 Expected: PASS.

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { PiAdapter } from "@coding-agent/core";
+import type { PiAdapter } from "@potato/core";
 import { createAdapter, runCommand, type RunCommandOptions } from "../src/commands/run.js";
 
 describe("run command model configuration", () => {
@@ -139,7 +139,7 @@ describe("run command model configuration", () => {
     expect(seen[0]?.workspacePath).toBe("/repo");
   });
 
-  it("fails the command when the agent emits task.failed", async () => {
+  it("fails the command when the potato emits task.failed", async () => {
     const adapter: PiAdapter = {
       async *run(input) {
         yield {

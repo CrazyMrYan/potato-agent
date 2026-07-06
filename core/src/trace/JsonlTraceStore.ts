@@ -6,7 +6,7 @@ export class JsonlTraceStore implements TraceStore {
   private readonly traceDir: string;
 
   constructor(private readonly workspacePath: string) {
-    this.traceDir = join(workspacePath, ".coding-agent", "traces");
+    this.traceDir = join(workspacePath, ".potato", "traces");
   }
 
   async append(entry: TraceEntry): Promise<void> {

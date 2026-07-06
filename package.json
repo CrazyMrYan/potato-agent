@@ -1,12 +1,12 @@
 {
-  "name": "coding-agent",
+  "name": "potato",
   "version": "0.1.0",
   "private": true,
   "type": "module",
   "scripts": {
     "build": "pnpm -r --workspace-concurrency=1 build",
     "build:npm:cli": "node scripts/build-npm-cli.mjs",
-    "dev": "pnpm --filter @coding-agent/cli dev",
+    "dev": "pnpm --filter @potato/cli dev",
     "test": "pnpm build && pnpm -r --workspace-concurrency=1 test",
     "typecheck": "pnpm build && pnpm -r --workspace-concurrency=1 typecheck"
   },

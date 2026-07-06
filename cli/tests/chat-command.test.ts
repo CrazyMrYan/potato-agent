@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { AgentSession, type PiSessionAdapter } from "@coding-agent/core";
+import { AgentSession, type PiSessionAdapter } from "@potato/core";
 import { chatCommand } from "../src/commands/chat.js";
 
 class FakeSessionAdapter implements PiSessionAdapter {

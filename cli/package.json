@@ -1,9 +1,9 @@
 {
-  "name": "@coding-agent/cli",
+  "name": "@potato/cli",
   "version": "0.1.0",
   "type": "module",
   "bin": {
-    "agent": "./dist/cli.js"
+    "potato": "./dist/cli.js"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
@@ -12,8 +12,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@coding-agent/core": "workspace:*",
-    "@coding-agent/protocol": "workspace:*",
+    "@potato/core": "workspace:*",
+    "@potato/protocol": "workspace:*",
     "@earendil-works/pi-coding-agent": "^0.80.3",
     "@inquirer/prompts": "^8.5.2",
     "commander": "^15.0.0",

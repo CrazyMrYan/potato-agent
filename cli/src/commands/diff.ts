@@ -1,4 +1,4 @@
-import { GitDiffService, resolveDefaultWorkspacePath, type DiffService } from "@coding-agent/core";
+import { GitDiffService, resolveDefaultWorkspacePath, type DiffService } from "@potato/core";
 
 export type DiffCommandOptions = {
   workspacePath?: string;

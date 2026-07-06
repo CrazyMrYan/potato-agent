@@ -19,8 +19,8 @@ import {
   type McpCheckResult,
   type SubAgentConfig,
   type TraceStore
-} from "@coding-agent/core";
-import type { ApprovalRequest } from "@coding-agent/protocol";
+} from "@potato/core";
+import type { ApprovalRequest } from "@potato/protocol";
 import { formatTraceEntry } from "../commands/trace.js";
 import { EventStreamRenderer, type RenderedAgentEvent, type RenderedAgentEventKind } from "./EventStreamRenderer.js";
 import {
@@ -338,7 +338,7 @@ export function AgentTui(props: AgentTuiProps): React.ReactElement {
     const traceStore = props.traceStore ?? new JsonlTraceStore(workspacePath);
     const traces = await traceStore.list();
     if (traces.length === 0) {
-      appendEvent({ kind: "muted", text: "trace: 还没有执行过 agent 任务。" });
+      appendEvent({ kind: "muted", text: "trace: 还没有执行过 potato 任务。" });
       return;
     }
     const latest = traces[0];
@@ -1555,7 +1555,7 @@ function isReturnInput(input: string): boolean {
   return input === "\r" || input === "\n";
 }
 
-const ignoredFileCompletionDirs = new Set([".git", "node_modules", ".coding-agent", "dist", "build", "coverage"]);
+const ignoredFileCompletionDirs = new Set([".git", "node_modules", ".potato", "dist", "build", "coverage"]);
 
 async function listWorkspaceFilesWithNode(workspacePath: string, maxFiles = 1000): Promise<string[]> {
   const files: string[] = [];

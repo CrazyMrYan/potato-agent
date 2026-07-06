@@ -18,7 +18,7 @@ describe("Agent runtime config", () => {
         provider: "deepseek",
         model: "deepseek-chat",
         systemPrompt: "你是一个谨慎的编码智能体。",
-        skills: [{ id: "review", name: "review", path: "/repo/.coding-agent/skills/review", source: "local", enabled: true }],
+        skills: [{ id: "review", name: "review", path: "/repo/.potato/skills/review", source: "local", enabled: true }],
         mcpServers: [{ name: "filesystem", command: "npx", args: ["@modelcontextprotocol/server-filesystem", "/repo"] }],
         permissionPolicy: {
           mode: "confirm",
@@ -40,7 +40,7 @@ describe("Agent runtime config", () => {
       provider: "deepseek",
       model: "deepseek-reasoner",
       systemPrompt: "你是一个谨慎的编码智能体。",
-      skills: [{ id: "review", name: "review", path: "/repo/.coding-agent/skills/review", source: "local", enabled: true }],
+      skills: [{ id: "review", name: "review", path: "/repo/.potato/skills/review", source: "local", enabled: true }],
       mcpServers: [{ name: "filesystem", command: "npx", args: ["@modelcontextprotocol/server-filesystem", "/repo"] }],
       permissionPolicy: {
         mode: "bypass",
@@ -67,8 +67,8 @@ describe("Agent runtime config", () => {
         appendSystemPrompt: ["追加规则"],
         permissionPolicy: { mode: "bypass" },
         skills: [
-          { id: "review", name: "review", path: "/repo/.coding-agent/skills/review", source: "local", enabled: true },
-          { id: "disabled", name: "disabled", path: "/repo/.coding-agent/skills/disabled", source: "local", enabled: false }
+          { id: "review", name: "review", path: "/repo/.potato/skills/review", source: "local", enabled: true },
+          { id: "disabled", name: "disabled", path: "/repo/.potato/skills/disabled", source: "local", enabled: false }
         ],
         tools: { allow: ["read", "grep"], deny: ["bash"] }
       })
@@ -79,7 +79,7 @@ describe("Agent runtime config", () => {
       "追加规则",
       "--no-skills",
       "--skill",
-      "/repo/.coding-agent/skills/review",
+      "/repo/.potato/skills/review",
       "--tools",
       "read,grep",
       "--exclude-tools",
@@ -123,14 +123,14 @@ describe("Agent runtime config", () => {
     expect(
       buildPiRpcArgs({
         skills: [
-          { id: "enabled", name: "enabled", path: "/repo/.coding-agent/skills/.builtin/enabled", source: "builtin", enabled: true },
-          { id: "disabled", name: "disabled", path: "/repo/.coding-agent/skills/.builtin/disabled", source: "builtin", enabled: false }
+          { id: "enabled", name: "enabled", path: "/repo/.potato/skills/.builtin/enabled", source: "builtin", enabled: true },
+          { id: "disabled", name: "disabled", path: "/repo/.potato/skills/.builtin/disabled", source: "builtin", enabled: false }
         ]
       })
     ).toEqual([
       "--no-skills",
       "--skill",
-      "/repo/.coding-agent/skills/.builtin/enabled",
+      "/repo/.potato/skills/.builtin/enabled",
       "--tools",
       "read,ls,grep,find,bash,edit,write"
     ]);

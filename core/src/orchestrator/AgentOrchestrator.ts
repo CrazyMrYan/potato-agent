@@ -1,4 +1,4 @@
-import type { AgentEvent, RunTaskInput } from "@coding-agent/protocol";
+import type { AgentEvent, RunTaskInput } from "@potato/protocol";
 import type { AgentLoopDependencies } from "../loop/AgentLoop.js";
 import { AgentLoop } from "../loop/AgentLoop.js";
 import type { PiAdapter } from "../pi/PiAdapter.js";
