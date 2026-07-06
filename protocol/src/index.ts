@@ -5,6 +5,8 @@ export type {
   AgentEvent,
   AssistantMessageDeltaEvent,
   ApprovalRequestedEvent,
+  ContextBudgetEvent,
+  ContextCompactedEvent,
   DiffProducedEvent,
   StepStartedEvent,
   SubAgentFailedEvent,

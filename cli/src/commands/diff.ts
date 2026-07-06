@@ -1,4 +1,5 @@
 import { GitDiffService, resolveDefaultWorkspacePath, type DiffService } from "@potato/core";
+import { renderChangeSetLines } from "../ui/DiffRenderer.js";
 
 export type DiffCommandOptions = {
   workspacePath?: string;
@@ -15,15 +16,10 @@ export async function diffCommand(options: DiffCommandOptions = {}): Promise<voi
   const diffService = options.diffService ?? new GitDiffService();
   const changeSet = await diffService.getChangeSet(workspacePath);
 
-  if (changeSet.files.length === 0) {
-    write("No changes.");
-    return;
-  }
-
-  for (const file of changeSet.files) {
-    write(`${file.status} ${file.path}`);
-    if ((options.patch ?? true) && file.diff) {
-      write(file.diff);
-    }
+  const rendered = renderChangeSetLines({
+    files: (options.patch ?? true) ? changeSet.files : changeSet.files.map((file) => ({ ...file, diff: undefined }))
+  });
+  for (const line of rendered) {
+    write(line);
   }
 }

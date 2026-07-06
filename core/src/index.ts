@@ -10,6 +10,8 @@ export type {
 export { DEFAULT_AGENT_PERMISSION_POLICY, buildPiRpcArgs, buildRuntimeToolConfig, mergeAgentConfig, resolveAgentPermissionPolicy } from "./config/AgentConfig.js";
 export { ensureDefaultAgentConfig, FileAgentConfigStore, type AgentConfigStore } from "./config/AgentConfigStore.js";
 export { resolveDefaultWorkspacePath } from "./config/Workspace.js";
+export { HeuristicContextBudgetManager, estimateTokens } from "./context/ContextBudget.js";
+export type { ContextBudgetManager, ContextBudgetSnapshot, ContextCompactionResult } from "./context/ContextBudget.js";
 export { GitDiffService } from "./diff/DiffService.js";
 export type { DiffService } from "./diff/DiffService.js";
 export type { AgentGateway } from "./gateway/AgentGateway.js";

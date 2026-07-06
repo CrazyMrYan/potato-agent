@@ -15,8 +15,40 @@ describe("diff command", () => {
       }
     });
 
+    expect(write).toHaveBeenCalledWith("diff: 1 file changed");
     expect(write).toHaveBeenCalledWith("modified src/a.ts");
-    expect(write).toHaveBeenCalledWith("patch");
+    expect(write).toHaveBeenCalledWith("  patch");
+  });
+
+  it("renders unified diff lines with stable prefixes", async () => {
+    const write = vi.fn();
+
+    await diffCommand({
+      workspacePath: "/repo",
+      write,
+      diffService: {
+        async getChangeSet() {
+          return {
+            files: [
+              {
+                path: "src/a.ts",
+                status: "modified",
+                diff: "diff --git a/src/a.ts b/src/a.ts\n@@ -1 +1 @@\n-old\n+new"
+              }
+            ]
+          };
+        }
+      }
+    });
+
+    expect(write.mock.calls.map((call) => call[0])).toEqual([
+      "diff: 1 file changed",
+      "modified src/a.ts",
+      "  diff --git a/src/a.ts b/src/a.ts",
+      "  @@ -1 +1 @@",
+      "- old",
+      "+ new"
+    ]);
   });
 
   it("resolves the default workspace before reading diff", async () => {

@@ -45,6 +45,38 @@ describe("AgentLoop", () => {
     expect(traceStore.entries.filter((entry) => entry.kind === "event").map((entry) => entry.event.type)).toContain("subagent.selected");
     expect(traceStore.entries.filter((entry) => entry.kind === "event").map((entry) => entry.event.type)).toContain("subagent.finished");
   });
+
+  it("emits context budget and compaction events when usage crosses the threshold", async () => {
+    const traceStore = new MemoryTraceStore();
+    const loop = new AgentLoop(new StaticAdapter(), {
+      traceStore,
+      contextBudget: {
+        maxTokens: 1000,
+        compactAtRatio: 0.75,
+        estimate: () => ({ usedTokens: 820, maxTokens: 1000, ratio: 0.82 }),
+        compact: async () => ({
+          summary: "Goal: test. Decisions: keep trace order. Next: continue.",
+          originalTokens: 820,
+          compactedTokens: 120
+        })
+      }
+    });
+    const events: AgentEvent[] = [];
+
+    for await (const event of loop.run(input())) {
+      events.push(event);
+    }
+
+    expect(events.map((event) => event.type)).toEqual(["task.started", "context.budget", "context.compacted", "step.started", "task.finished"]);
+    expect(events.find((event) => event.type === "context.budget")).toEqual(
+      expect.objectContaining({ usedTokens: 820, maxTokens: 1000, ratio: 0.82, compactAtRatio: 0.75 })
+    );
+    expect(events.find((event) => event.type === "context.compacted")).toEqual(
+      expect.objectContaining({ originalTokens: 820, compactedTokens: 120, summary: expect.stringContaining("Goal") })
+    );
+    expect(traceStore.entries.map((entry) => entry.kind)).toContain("context.budget");
+    expect(traceStore.entries.map((entry) => entry.kind)).toContain("context.compacted");
+  });
 });
 
 function input(): RunTaskInput {

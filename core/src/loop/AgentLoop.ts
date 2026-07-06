@@ -1,4 +1,5 @@
 import type { AgentEvent, RunTaskInput, TaskFailedEvent, TaskFinishedEvent } from "@potato/protocol";
+import type { ContextBudgetManager } from "../context/ContextBudget.js";
 import type { DiffService } from "../diff/DiffService.js";
 import type { PiAdapter } from "../pi/PiAdapter.js";
 import type { SubAgentConfig } from "../subagent/SubAgentConfig.js";
@@ -10,6 +11,7 @@ export type AgentLoopDependencies = {
   diffService?: DiffService;
   runtimeCapability?: RuntimeCapabilityReport;
   subAgent?: SubAgentConfig;
+  contextBudget?: ContextBudgetManager;
 };
 
 export class AgentLoop {
@@ -32,6 +34,11 @@ export class AgentLoop {
     };
     await this.traceEvent(started);
     yield started;
+
+    for (const event of await this.prepareContext(input)) {
+      await this.traceEvent(event);
+      yield event;
+    }
 
     const subAgent = this.dependencies.subAgent?.enabled === false ? undefined : this.dependencies.subAgent;
     if (subAgent && subAgent.id !== "default") {
@@ -131,5 +138,40 @@ export class AgentLoop {
     } catch {
       return undefined;
     }
+  }
+
+  private async prepareContext(input: RunTaskInput): Promise<AgentEvent[]> {
+    const manager = this.dependencies.contextBudget;
+    if (!manager) {
+      return [];
+    }
+
+    const budget = manager.estimate(input);
+    const budgetEvent: AgentEvent = {
+      type: "context.budget",
+      taskId: input.taskId,
+      usedTokens: budget.usedTokens,
+      maxTokens: budget.maxTokens,
+      ratio: budget.ratio,
+      compactAtRatio: manager.compactAtRatio
+    };
+    await this.trace({ timestamp: nowIso(), taskId: input.taskId, kind: "context.budget", budget });
+
+    if (budget.ratio < manager.compactAtRatio) {
+      return [budgetEvent];
+    }
+
+    const result = await manager.compact(input, budget);
+    await this.trace({ timestamp: nowIso(), taskId: input.taskId, kind: "context.compacted", result });
+    return [
+      budgetEvent,
+      {
+        type: "context.compacted",
+        taskId: input.taskId,
+        summary: result.summary,
+        originalTokens: result.originalTokens,
+        compactedTokens: result.compactedTokens
+      }
+    ];
   }
 }

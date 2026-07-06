@@ -31,8 +31,42 @@ describe("AgentTui render", () => {
     expect(frame).toContain("workspace /repo");
     expect(frame).toContain("mode manual");
     expect(frame).toContain("subagent default");
+    expect(frame).toContain("network unknown");
     expect(frame).toContain("commands /model /workspace /diff /trace /mode /skill /mcp /agent /exit");
+    expect(frame).toContain("Ctrl+T/O/D");
     expect(frame).not.toContain("input");
+  });
+
+  it("hides thinking by default and toggles it with t", async () => {
+    const workspacePath = await mkdtemp(join(tmpdir(), "coding-agent-tui-"));
+    const rendered = render(
+      React.createElement(AgentTui, {
+        config: {
+          workspacePath,
+          provider: "deepseek",
+          model: "deepseek-reasoner"
+        },
+        createSession: () => ({
+          async start() {},
+          async stop() {},
+          async *send() {
+            yield { type: "assistant.delta" as const, taskId: "task_1", channel: "thinking" as const, text: "hidden reasoning" };
+            yield { type: "task.finished" as const, taskId: "task_1", summary: "done" };
+          },
+          async approve() {}
+        })
+      })
+    );
+
+    rendered.stdin.write("task");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    rendered.stdin.write("\r");
+    await waitForFrame(rendered.lastFrame, "done");
+    expect(rendered.lastFrame()).not.toContain("hidden reasoning");
+
+    rendered.stdin.write("\u0014");
+    await waitForFrame(rendered.lastFrame, "hidden reasoning");
+    expect(rendered.lastFrame()).toContain("hidden reasoning");
   });
 
   it("does not duplicate the slash while command completion is open", async () => {
@@ -112,7 +146,7 @@ describe("AgentTui render", () => {
     );
 
     rendered.stdin.write("@package");
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await waitForFrame(rendered.lastFrame, "package.json");
     const frame = rendered.lastFrame() ?? "";
 
     expect(frame).toContain("FILES");

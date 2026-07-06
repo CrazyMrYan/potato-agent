@@ -43,6 +43,23 @@ export type ApprovalRequestedEvent = {
   request: ApprovalRequest;
 };
 
+export type ContextBudgetEvent = {
+  type: "context.budget";
+  taskId: string;
+  usedTokens: number;
+  maxTokens: number;
+  ratio: number;
+  compactAtRatio: number;
+};
+
+export type ContextCompactedEvent = {
+  type: "context.compacted";
+  taskId: string;
+  summary: string;
+  originalTokens: number;
+  compactedTokens: number;
+};
+
 export type SubAgentSelectedEvent = {
   type: "subagent.selected";
   taskId: string;
@@ -113,6 +130,8 @@ export type AgentEvent =
   | ToolCallFinishedEvent
   | AssistantMessageDeltaEvent
   | ApprovalRequestedEvent
+  | ContextBudgetEvent
+  | ContextCompactedEvent
   | SubAgentSelectedEvent
   | SubAgentStartedEvent
   | SubAgentFinishedEvent

@@ -63,7 +63,13 @@ export function formatTraceEntry(entry: TraceEntry): string {
     return `${entry.timestamp} diff ${entry.changeSet.files.length} files`;
   }
   if (entry.kind === "runtime.capability") {
-    return `${entry.timestamp} runtime.capability ${entry.capability.adapter}`;
+    return `${entry.timestamp} runtime.capability ${entry.capability.adapter} network=${entry.capability.network}`;
+  }
+  if (entry.kind === "context.budget") {
+    return `${entry.timestamp} context.budget ${entry.budget.usedTokens}/${entry.budget.maxTokens} ${Math.round(entry.budget.ratio * 100)}%`;
+  }
+  if (entry.kind === "context.compacted") {
+    return `${entry.timestamp} context.compacted ${entry.result.originalTokens}->${entry.result.compactedTokens}`;
   }
 
   const event = entry.event;
@@ -84,6 +90,10 @@ export function formatTraceEntry(entry: TraceEntry): string {
       return `${entry.timestamp} tool.finished ${event.tool} ${event.success ? "ok" : "failed"}${event.output ? ` ${event.output}` : ""}`;
     case "approval.requested":
       return `${entry.timestamp} approval.requested ${event.request.title}`;
+    case "context.budget":
+      return `${entry.timestamp} context.budget ${event.usedTokens}/${event.maxTokens} ${Math.round(event.ratio * 100)}%`;
+    case "context.compacted":
+      return `${entry.timestamp} context.compacted ${event.originalTokens}->${event.compactedTokens}`;
     case "diff.produced":
       return `${entry.timestamp} diff.produced ${event.changeSet.files.length} files`;
     case "task.started":

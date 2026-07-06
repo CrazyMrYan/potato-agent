@@ -1,8 +1,11 @@
 import type { AgentEvent, ChangeSet, RunTaskInput } from "@potato/protocol";
+import type { ContextBudgetSnapshot, ContextCompactionResult } from "../context/ContextBudget.js";
 
 export type TraceEntry =
   | { timestamp: string; taskId: string; kind: "task.input"; input: RunTaskInput }
   | { timestamp: string; taskId: string; kind: "event"; event: AgentEvent }
+  | { timestamp: string; taskId: string; kind: "context.budget"; budget: ContextBudgetSnapshot }
+  | { timestamp: string; taskId: string; kind: "context.compacted"; result: ContextCompactionResult }
   | { timestamp: string; taskId: string; kind: "diff"; changeSet: ChangeSet }
   | { timestamp: string; taskId: string; kind: "task.finished"; summary: string }
   | { timestamp: string; taskId: string; kind: "task.failed"; code: string; message: string; cause?: string }
@@ -13,6 +16,7 @@ export type RuntimeCapabilityReport = {
   systemPrompt: boolean;
   skills: boolean;
   mcpServers: boolean;
+  network: "supported" | "unsupported" | "unknown";
   toolAllowDeny: boolean;
   toolInterception: boolean;
   toolBoundaryApproval: boolean;

@@ -1,5 +1,7 @@
 import type { AgentEvent } from "@potato/protocol";
 import pc from "picocolors";
+import { renderChangeSetLines } from "./DiffRenderer.js";
+import { renderMarkdownText } from "./MarkdownRenderer.js";
 
 export type EventStreamRendererOptions = {
   colors?: boolean;
@@ -69,7 +71,7 @@ export class EventStreamRenderer {
     }
 
     if (this.pendingText.trim()) {
-      events.push({ kind: "text", text: this.pendingText.trim() });
+      events.push({ kind: "text", text: renderMarkdownText(this.pendingText) });
       this.pendingText = "";
     }
 
@@ -99,7 +101,11 @@ export class EventStreamRenderer {
       case "subagent.failed":
         return { kind: "error", text: this.red(`SubAgent failed: ${event.name} ${event.error.message}`) };
       case "diff.produced":
-        return { kind: "diff", text: this.magenta(`diff ${event.changeSet.files.length} 个文件`) };
+        return { kind: "diff", text: this.magenta(renderChangeSetLines(event.changeSet).join("\n")) };
+      case "context.budget":
+        return { kind: "muted", text: this.gray(formatContextBudget(event.usedTokens, event.maxTokens, event.ratio, event.compactAtRatio)) };
+      case "context.compacted":
+        return { kind: "warning", text: this.yellow(`context compacted ${event.originalTokens} -> ${event.compactedTokens} tokens`) };
       case "verification.started":
         return { kind: "tool", text: this.gray(event.command) };
       case "verification.finished":
@@ -158,4 +164,10 @@ function joinParts(first: string, second: string | undefined): string {
 
 function truncate(value: string, maxLength: number): string {
   return value.length > maxLength ? `${value.slice(0, maxLength - 3)}...` : value;
+}
+
+function formatContextBudget(usedTokens: number, maxTokens: number, ratio: number, compactAtRatio: number): string {
+  const filled = Math.max(0, Math.min(10, Math.round(ratio * 10)));
+  const ring = `${"◉".repeat(filled)}${"○".repeat(10 - filled)}`;
+  return `context ${ring} ${Math.round(ratio * 100)}% · compact at ${Math.round(compactAtRatio * 100)}%`;
 }

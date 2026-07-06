@@ -187,6 +187,6 @@ describe("run command model configuration", () => {
       write: (line) => writes.push(line)
     });
 
-    expect(writes.join("\n")).toContain("diff 1 个文件");
+    expect(writes.join("\n")).toContain("diff: 1 file changed");
   });
 });

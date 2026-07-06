@@ -9,6 +9,7 @@
 - CLI 默认 TUI、`run`、`chat`、`diff`、`trace`。
 - TUI slash command：`/mode`、`/skill`、`/mcp`、`/agent`、`/diff`、`/trace`。
 - Core 基础能力：`AgentLoop`、`SkillManager`、`McpConfigChecker`、`SubAgentManager`、trace、diff、权限策略。
+- M6 第一批体验能力：context budget/自动压缩事件、Markdown 正文渲染、统一 diff renderer、thinking/tool/diff 展开收起、network capability 展示。
 - Manual 权限模式已开始支持写入前确认、拒绝暂停和 diff 预览，但展示质量还需要继续提升。
 - CLI npm 发布链路已建立，目标包是 `@potato/cli`，启动命令是 `potato`。
 
@@ -36,6 +37,13 @@ M6 的目标不是继续堆功能入口，而是让 core 的关键能力在 CLI/
 - 当上下文接近阈值时自动压缩。
 - 压缩结果必须保留任务目标、关键文件、已做决策、未完成事项、风险和下一步。
 - trace 记录压缩前后状态，便于复盘。
+
+当前状态：
+
+- 已新增 `ContextBudgetManager` 和 `HeuristicContextBudgetManager`。
+- `AgentLoop`、`AgentSession` 会发出 `context.budget`，超过阈值时发出 `context.compacted`。
+- trace 已记录 `context.budget` 和 `context.compacted`。
+- 当前压缩是 heuristic 摘要入口，后续需要接入真实模型摘要和历史消息裁剪。
 
 建议模块：
 
@@ -67,6 +75,12 @@ context ◉◉◉◉○○○○○○ 42% · compact at 75%
 - 代码块保持可复制，不加复杂边框。
 - thinking、tool、diff、trace 不走普通 Markdown 渲染，避免误渲染。
 
+当前状态：
+
+- `EventStreamRenderer` 已对 assistant text 做轻量 Markdown 渲染。
+- 当前支持标题、列表、引用、代码围栏和 inline code 的基础终端化。
+- 未引入完整 Markdown AST，复杂表格仍待后续增强。
+
 CLI/TUI 要求：
 
 - 输出内容比现在更清晰。
@@ -87,6 +101,12 @@ M6 目标：
 - `+` 行绿色，`-` 行红色，`@@` hunk 灰色，文件 header 弱化。
 - 大 diff 自动折叠，只展示关键片段和“展开更多”提示。
 - 手动模式写入前展示“将修改哪些文件、具体改动是什么”，用户再决定允许或暂停。
+
+当前状态：
+
+- 已新增统一 `DiffRenderer`。
+- `/diff`、run 结束 diff event 和 TUI `/diff` 使用同一套文本 renderer。
+- 审批 extension 里的 diff 预览仍是独立轻量实现，后续需要接入同一 renderer。
 
 建议模块：
 
@@ -117,6 +137,12 @@ M6 最小实现：
 - 工具调用默认显示一行摘要。
 - 提供按键切换展开状态。
 
+当前状态：
+
+- TUI 已默认折叠 thinking。
+- 支持 `Ctrl+T` 展开/收起 thinking，`Ctrl+O` 展开/收起 tool output，`Ctrl+D` 展开/收起 diff detail。
+- 为避免影响正常输入，不使用裸 `t/o/d` 快捷键。
+
 建议先支持：
 
 - `t` 展开/收起 thinking。
@@ -138,6 +164,12 @@ M6 目标：
 - `RuntimeCapabilityReporter` 增加 network/web capability。
 - `/mcp check` 或 `/agent` 状态区能显示当前 adapter 是否支持联网。
 - 不虚标“已支持联网”。如果只是模型供应商可能内部联网，必须写成“未知/由模型供应商决定”。
+
+当前状态：
+
+- `RuntimeCapabilityReporter` 已增加 `network` 字段。
+- TUI 状态栏显示 `network unknown`。
+- Pi RPC 路径仍不声明本项目已提供联网工具。
 
 ### 6. CLI 发布和部署
 

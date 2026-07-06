@@ -20,7 +20,7 @@ describe("EventStreamRenderer", () => {
       "Pi 开始新一轮推理",
       "The user",
       "read 读取文件：src/index.ts",
-      "## 项目概览",
+      "项目概览",
       "这是模型最终输出"
     ]);
   });
@@ -36,5 +36,38 @@ describe("EventStreamRenderer", () => {
     });
 
     expect(line).toBe("bash line one line two...");
+  });
+
+  it("renders markdown blocks in assistant text without touching tool output", () => {
+    const renderer = new EventStreamRenderer({ colors: false });
+
+    renderer.render({ type: "assistant.delta", taskId: "task_1", channel: "text", text: "## Plan\n\n- test\n\n```ts\nconst x = 1;\n```" });
+    const output = renderer.flush();
+
+    expect(output).toBe("Plan\n\n• test\n\nconst x = 1;");
+  });
+
+  it("renders context budget and compaction status", () => {
+    const renderer = new EventStreamRenderer({ colors: false });
+
+    expect(
+      renderer.render({
+        type: "context.budget",
+        taskId: "task_1",
+        usedTokens: 820,
+        maxTokens: 1000,
+        ratio: 0.82,
+        compactAtRatio: 0.75
+      })
+    ).toBe("context ◉◉◉◉◉◉◉◉○○ 82% · compact at 75%");
+    expect(
+      renderer.render({
+        type: "context.compacted",
+        taskId: "task_1",
+        summary: "Goal: test",
+        originalTokens: 820,
+        compactedTokens: 120
+      })
+    ).toBe("context compacted 820 -> 120 tokens");
   });
 });

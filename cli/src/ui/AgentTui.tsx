@@ -8,6 +8,7 @@ import {
   GitDiffService,
   JsonlTraceStore,
   McpConfigChecker,
+  RuntimeCapabilityReporter,
   SkillManager,
   SubAgentManager,
   type AgentConfig,
@@ -22,6 +23,7 @@ import {
 } from "@potato/core";
 import type { ApprovalRequest } from "@potato/protocol";
 import { formatTraceEntry } from "../commands/trace.js";
+import { renderChangeSetLines } from "./DiffRenderer.js";
 import { EventStreamRenderer, type RenderedAgentEvent, type RenderedAgentEventKind } from "./EventStreamRenderer.js";
 import {
   applyCompletion,
@@ -119,23 +121,26 @@ export function AgentTui(props: AgentTuiProps): React.ReactElement {
   const [selectedSubAgent, setSelectedSubAgent] = useState(0);
   const [pendingApproval, setPendingApproval] = useState<ApprovalRequest | undefined>();
   const [pendingApiKey, setPendingApiKey] = useState(props.config.apiKey ?? "");
+  const [expandedKinds, setExpandedKinds] = useState({ thinking: false, tool: false, diff: false });
   const [events, setEvents] = useState<RenderedAgentEvent[]>([
     { kind: "muted", text: "准备就绪。输入任务开始，输入 / 打开命令菜单。" }
   ]);
   const sessionRef = useRef<AgentSession | undefined>(undefined);
   const workspacePath = config.workspacePath ?? process.cwd();
   const permissionMode = config.permissionPolicy?.mode ?? "confirm";
+  const runtimeCapability = useMemo(() => new RuntimeCapabilityReporter().forAdapter("rpc"), []);
   const skillManager = props.skillManager ?? new SkillManager(workspacePath);
   const mcpChecker = props.mcpChecker ?? new McpConfigChecker({ adapter: "rpc" });
   const subAgentManager = props.subAgentManager ?? new SubAgentManager();
 
   const visibleEventCapacity = Math.max(8, Math.min(24, stdout.stdout.rows - 9));
-  const maxScrollOffset = Math.max(events.length - visibleEventCapacity, 0);
+  const displayEvents = useMemo(() => filterDisplayEvents(events, expandedKinds), [events, expandedKinds]);
+  const maxScrollOffset = Math.max(displayEvents.length - visibleEventCapacity, 0);
   const visibleEvents = useMemo(() => {
-    const end = Math.max(events.length - scrollOffset, 0);
+    const end = Math.max(displayEvents.length - scrollOffset, 0);
     const start = Math.max(end - visibleEventCapacity, 0);
-    return events.slice(start, end);
-  }, [events, scrollOffset, visibleEventCapacity]);
+    return displayEvents.slice(start, end);
+  }, [displayEvents, scrollOffset, visibleEventCapacity]);
   const commandMatches = useMemo(() => {
     if (completionContext?.type !== "command") {
       return commandOptions;
@@ -325,13 +330,7 @@ export function AgentTui(props: AgentTuiProps): React.ReactElement {
       appendEvent({ kind: "muted", text: "diff: 当前没有 Git 变更。" });
       return;
     }
-    appendEvent({ kind: "diff", text: `diff: ${changeSet.files.length} 个文件变更。` });
-    appendEvents(
-      changeSet.files.flatMap((file) => [
-        { kind: "diff" as const, text: `${file.status} ${file.path}` },
-        ...(file.diff ? file.diff.split("\n").slice(0, 80).map((line) => ({ kind: "diff" as const, text: line })) : [])
-      ])
-    );
+    appendEvents(renderChangeSetLines(changeSet).map((line) => ({ kind: "diff" as const, text: line })));
   }, [appendEvent, appendEvents, props.diffService, workspacePath]);
 
   const showTrace = useCallback(async () => {
@@ -571,6 +570,21 @@ export function AgentTui(props: AgentTuiProps): React.ReactElement {
       return;
     }
 
+    if (mode === "chat" && key.ctrl && input === "t") {
+      setExpandedKinds((current) => ({ ...current, thinking: !current.thinking }));
+      return;
+    }
+
+    if (mode === "chat" && key.ctrl && input === "o") {
+      setExpandedKinds((current) => ({ ...current, tool: !current.tool }));
+      return;
+    }
+
+    if (mode === "chat" && key.ctrl && input === "d") {
+      setExpandedKinds((current) => ({ ...current, diff: !current.diff }));
+      return;
+    }
+
     if (mode === "chat" && key.pageUp) {
       setScrollOffset((value) => Math.min(value + 8, maxScrollOffset));
       return;
@@ -794,17 +808,18 @@ export function AgentTui(props: AgentTuiProps): React.ReactElement {
           <Text dimColor>workspace <Text color="white">{workspacePath}</Text></Text>
           <Text dimColor>mode <Text color="white">{formatPermissionMode(permissionMode)}</Text></Text>
           <Text dimColor>subagent <Text color="white">{config.activeSubAgentId ?? "default"}</Text></Text>
+          <Text dimColor>network <Text color="white">{runtimeCapability.network}</Text></Text>
         </Box>
         <Box gap={2} flexWrap="wrap">
           <Text dimColor>commands <Text color="white">/model /workspace /diff /trace /mode /skill /mcp /agent /exit</Text></Text>
-          <Text dimColor>keys <Text color="white">Ctrl+P PageUp/PageDown Ctrl+C</Text></Text>
+          <Text dimColor>keys <Text color="white">Ctrl+P PageUp/PageDown Ctrl+T/O/D Ctrl+C</Text></Text>
         </Box>
       </Box>
 
       <Box marginTop={1} paddingX={1} flexDirection="column" minHeight={visibleEventCapacity} overflow="hidden">
         <Text dimColor>
-          transcript{events.length > visibleEventCapacity
-            ? ` · ${Math.max(events.length - visibleEventCapacity - scrollOffset + 1, 1)}-${Math.max(events.length - scrollOffset, 1)}/${events.length}`
+          transcript{displayEvents.length > visibleEventCapacity
+            ? ` · ${Math.max(displayEvents.length - visibleEventCapacity - scrollOffset + 1, 1)}-${Math.max(displayEvents.length - scrollOffset, 1)}/${displayEvents.length}`
             : ""}
         </Text>
         {visibleEvents.map((event, index) => (
@@ -1116,6 +1131,55 @@ function handleSecondaryInput(options: SecondaryInputOptions): void {
 
 function EventLine({ event }: { event: RenderedAgentEvent }): React.ReactElement {
   return <Text {...eventTextStyle(event.kind)} wrap="wrap">{event.text}</Text>;
+}
+
+function filterDisplayEvents(
+  events: RenderedAgentEvent[],
+  expandedKinds: { thinking: boolean; tool: boolean; diff: boolean }
+): RenderedAgentEvent[] {
+  const filtered: RenderedAgentEvent[] = [];
+  let hiddenThinking = 0;
+  let hiddenTool = 0;
+  let hiddenDiff = 0;
+
+  for (const event of events) {
+    if (event.kind === "thinking" && !expandedKinds.thinking) {
+      hiddenThinking++;
+      continue;
+    }
+
+    if ((event.kind === "success" || event.kind === "error") && !expandedKinds.tool && looksLikeToolOutput(event.text)) {
+      hiddenTool++;
+      continue;
+    }
+
+    if (event.kind === "diff" && !expandedKinds.diff && isDiffDetailLine(event.text)) {
+      hiddenDiff++;
+      continue;
+    }
+
+    filtered.push(event);
+  }
+
+  if (hiddenThinking > 0) {
+    filtered.push({ kind: "muted", text: `Thinking collapsed (${hiddenThinking}) · press t` });
+  }
+  if (hiddenTool > 0) {
+    filtered.push({ kind: "muted", text: `Tool output collapsed (${hiddenTool}) · press o` });
+  }
+  if (hiddenDiff > 0) {
+    filtered.push({ kind: "muted", text: `Diff detail collapsed (${hiddenDiff}) · press d` });
+  }
+
+  return filtered;
+}
+
+function looksLikeToolOutput(text: string): boolean {
+  return /^(bash|read|ls|grep|find|edit|write)\b/.test(text);
+}
+
+function isDiffDetailLine(text: string): boolean {
+  return text.startsWith("+ ") || text.startsWith("- ") || text.startsWith("  @@") || text.startsWith("  diff --git") || text.startsWith("  index ");
 }
 
 function PromptLine({ editor }: { editor: PromptEditorState }): React.ReactElement {

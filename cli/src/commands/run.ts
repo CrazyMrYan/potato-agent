@@ -2,6 +2,7 @@ import type { RunTaskInput } from "@potato/protocol";
 import {
   AgentOrchestrator,
   GitDiffService,
+  HeuristicContextBudgetManager,
   JsonlTraceStore,
   LocalAgentGateway,
   SubAgentManager,
@@ -53,7 +54,7 @@ export async function runCommand(prompt: string, options: RunCommandOptions = {}
   const adapter = options.createAdapter ? options.createAdapter({ workspacePath, ...runtimeConfig }) : createAdapter({ ...runtimeConfig, workspacePath });
   const traceStore = options.createTraceStore ? options.createTraceStore(workspacePath) : new JsonlTraceStore(workspacePath);
   const diffService = options.createDiffService ? options.createDiffService() : new GitDiffService();
-  const gateway = new LocalAgentGateway(new AgentOrchestrator(adapter, { traceStore, diffService, subAgent: activeSubAgent }));
+  const gateway = new LocalAgentGateway(new AgentOrchestrator(adapter, { traceStore, diffService, subAgent: activeSubAgent, contextBudget: new HeuristicContextBudgetManager() }));
   const write = options.write ?? console.log;
   const renderer = new EventStreamRenderer();
 

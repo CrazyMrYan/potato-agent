@@ -1,4 +1,5 @@
 import type { AgentConfig } from "../config/AgentConfig.js";
+import { HeuristicContextBudgetManager, type ContextBudgetManager } from "../context/ContextBudget.js";
 import { type PiSessionAdapter, PiRpcSessionAdapter } from "../pi/PiSessionAdapter.js";
 import { resolvePiAdapterOptions } from "../pi/resolvePiAdapterOptions.js";
 import { SubAgentManager } from "../subagent/SubAgentManager.js";
@@ -10,6 +11,7 @@ type AgentSessionFactoryDependencies = {
   createAdapter?: (config: AgentConfig) => PiSessionAdapter;
   createTraceStore?: (workspacePath: string) => TraceStore;
   createSubAgentManager?: () => Pick<SubAgentManager, "list">;
+  createContextBudget?: () => ContextBudgetManager;
   env?: NodeJS.ProcessEnv;
 };
 
@@ -28,7 +30,8 @@ export class AgentSessionFactory {
 
     const subAgentManager = this.dependencies.createSubAgentManager?.() ?? new SubAgentManager();
     const activeSubAgent = (await subAgentManager.list()).find((agent) => agent.id === resolved.activeSubAgentId);
+    const contextBudget = this.dependencies.createContextBudget?.() ?? new HeuristicContextBudgetManager();
 
-    return new AgentSession(adapter, traceStore, workspacePath, activeSubAgent);
+    return new AgentSession(adapter, traceStore, workspacePath, activeSubAgent, contextBudget);
   }
 }

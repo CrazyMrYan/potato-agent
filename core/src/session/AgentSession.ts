@@ -1,4 +1,5 @@
 import type { AgentEvent, RunTaskInput } from "@potato/protocol";
+import type { ContextBudgetManager } from "../context/ContextBudget.js";
 import type { PiSessionAdapter } from "../pi/PiSessionAdapter.js";
 import type { SubAgentConfig } from "../subagent/SubAgentConfig.js";
 import type { TraceStore } from "../trace/TraceStore.js";
@@ -9,7 +10,8 @@ export class AgentSession {
     private readonly adapter: PiSessionAdapter,
     private readonly traceStore?: TraceStore,
     private readonly workspacePath: string = process.cwd(),
-    private readonly subAgent?: SubAgentConfig
+    private readonly subAgent?: SubAgentConfig,
+    private readonly contextBudget?: ContextBudgetManager
   ) {}
 
   start(): Promise<void> {
@@ -33,6 +35,7 @@ export class AgentSession {
           approvalMode: "manual"
         };
         await this.trace({ timestamp: nowIso(), taskId: event.taskId, kind: "task.input", input });
+        yield* this.prepareContext(input);
         if (this.subAgent && this.subAgent.id !== "default" && this.subAgent.enabled !== false) {
           yield* this.emitSubAgentStart(event.taskId, this.subAgent);
         }
@@ -106,5 +109,40 @@ export class AgentSession {
     } catch {
       return;
     }
+  }
+
+  private async *prepareContext(input: RunTaskInput): AsyncIterable<AgentEvent> {
+    if (!this.contextBudget) {
+      return;
+    }
+
+    const budget = this.contextBudget.estimate(input);
+    const budgetEvent: AgentEvent = {
+      type: "context.budget",
+      taskId: input.taskId,
+      usedTokens: budget.usedTokens,
+      maxTokens: budget.maxTokens,
+      ratio: budget.ratio,
+      compactAtRatio: this.contextBudget.compactAtRatio
+    };
+    await this.trace({ timestamp: nowIso(), taskId: input.taskId, kind: "context.budget", budget });
+    await this.trace({ timestamp: nowIso(), taskId: input.taskId, kind: "event", event: budgetEvent });
+    yield budgetEvent;
+
+    if (budget.ratio < this.contextBudget.compactAtRatio) {
+      return;
+    }
+
+    const result = await this.contextBudget.compact(input, budget);
+    const compactedEvent: AgentEvent = {
+      type: "context.compacted",
+      taskId: input.taskId,
+      summary: result.summary,
+      originalTokens: result.originalTokens,
+      compactedTokens: result.compactedTokens
+    };
+    await this.trace({ timestamp: nowIso(), taskId: input.taskId, kind: "context.compacted", result });
+    await this.trace({ timestamp: nowIso(), taskId: input.taskId, kind: "event", event: compactedEvent });
+    yield compactedEvent;
   }
 }

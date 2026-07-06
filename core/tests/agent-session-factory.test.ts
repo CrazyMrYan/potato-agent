@@ -52,7 +52,10 @@ describe("AgentSessionFactory", () => {
     expect(adapter.started).toBe(true);
     expect(adapter.prompts).toEqual(["解释项目"]);
     expect(adapter.stopped).toBe(true);
-    expect(events).toEqual([{ type: "task.finished", taskId: "turn_1", summary: "完成：解释项目" }]);
+    expect(events).toEqual([
+      expect.objectContaining({ type: "context.budget", taskId: "turn_1" }),
+      { type: "task.finished", taskId: "turn_1", summary: "完成：解释项目" }
+    ]);
   });
 
   it("records trace entries for each session turn by default when a trace store is provided", async () => {
@@ -76,8 +79,40 @@ describe("AgentSessionFactory", () => {
     }
     await session.stop();
 
-    expect(traceStore.entries.map((entry) => entry.kind)).toEqual(["task.input", "event", "task.finished"]);
+    expect(traceStore.entries.map((entry) => entry.kind)).toEqual(["task.input", "context.budget", "event", "event", "task.finished"]);
     expect(traceStore.entries[0]).toEqual(expect.objectContaining({ kind: "task.input", taskId: "turn_1" }));
+  });
+
+  it("emits context budget status for session turns", async () => {
+    const adapter = new FakeSessionAdapter();
+    const traceStore = new MemoryTraceStore();
+    const factory = new AgentSessionFactory({
+      createAdapter: () => adapter,
+      createTraceStore: () => traceStore,
+      createContextBudget: () => ({
+        maxTokens: 100,
+        compactAtRatio: 0.75,
+        estimate: () => ({ usedTokens: 80, maxTokens: 100, ratio: 0.8 }),
+        compact: async () => ({ summary: "Goal: explain", originalTokens: 80, compactedTokens: 20 })
+      }),
+      env: { DEEPSEEK_API_KEY: "test-key" }
+    });
+
+    const session = await factory.create({
+      provider: "deepseek",
+      model: "deepseek-reasoner",
+      workspacePath: "/repo"
+    });
+
+    await session.start();
+    const events = [];
+    for await (const event of session.send("解释项目")) {
+      events.push(event);
+    }
+
+    expect(events.map((event) => event.type)).toEqual(["context.budget", "context.compacted", "task.finished"]);
+    expect(traceStore.entries.map((entry) => entry.kind)).toContain("context.budget");
+    expect(traceStore.entries.map((entry) => entry.kind)).toContain("context.compacted");
   });
 
   it("forwards approval decisions to the active adapter", async () => {
