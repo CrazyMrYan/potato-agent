@@ -122,6 +122,9 @@ export function AgentTui(props: AgentTuiProps): React.ReactElement {
   const [pendingApproval, setPendingApproval] = useState<ApprovalRequest | undefined>();
   const [pendingApiKey, setPendingApiKey] = useState(props.config.apiKey ?? "");
   const [expandedKinds, setExpandedKinds] = useState({ thinking: false, tool: false, diff: false });
+  const [contextStatus, setContextStatus] = useState<string | undefined>();
+  const [promptHistory, setPromptHistory] = useState<string[]>([]);
+  const [historyIndex, setHistoryIndex] = useState<number | undefined>();
   const [events, setEvents] = useState<RenderedAgentEvent[]>([
     { kind: "muted", text: "准备就绪。输入任务开始，输入 / 打开命令菜单。" }
   ]);
@@ -171,7 +174,11 @@ export function AgentTui(props: AgentTuiProps): React.ReactElement {
   }, []);
 
   const appendEvents = useCallback((nextEvents: RenderedAgentEvent[]) => {
-    const filtered = nextEvents.filter((event) => event.text.length > 0);
+    const contextEvent = nextEvents.find((event) => event.kind === "context" && event.text.length > 0);
+    if (contextEvent) {
+      setContextStatus(contextEvent.text);
+    }
+    const filtered = nextEvents.filter((event) => event.kind !== "context" && event.text.length > 0);
     if (filtered.length === 0) {
       return;
     }
@@ -496,6 +503,7 @@ export function AgentTui(props: AgentTuiProps): React.ReactElement {
         return;
       }
 
+      setPromptHistory((current) => [...current.filter((item) => item !== prompt), prompt].slice(-50));
       await sendPrompt(prompt);
     },
     [app, appendEvent, enterModelProviderMode, openAgentMenu, openMcpMenu, openPermissionMode, openSkillList, sendPrompt, showDiff, showTrace, workspacePath]
@@ -575,8 +583,11 @@ export function AgentTui(props: AgentTuiProps): React.ReactElement {
       return;
     }
 
-    if (mode === "chat" && key.ctrl && input === "o") {
-      setExpandedKinds((current) => ({ ...current, tool: !current.tool }));
+    if (mode === "chat" && (isDetailToggleKey(input, key) || (key.ctrl && input === "o"))) {
+      setExpandedKinds((current) => {
+        const expanded = !(current.tool && current.thinking && current.diff);
+        return { thinking: expanded, tool: expanded, diff: expanded };
+      });
       return;
     }
 
@@ -596,12 +607,30 @@ export function AgentTui(props: AgentTuiProps): React.ReactElement {
     }
 
     if (mode === "chat" && key.upArrow && editor.text.length === 0) {
-      setScrollOffset((value) => Math.min(value + 1, maxScrollOffset));
+      const nextIndex = historyIndex === undefined ? promptHistory.length - 1 : Math.max(historyIndex - 1, 0);
+      const prompt = promptHistory[nextIndex];
+      if (prompt) {
+        setHistoryIndex(nextIndex);
+        updateEditor(createPromptEditor(prompt));
+      } else {
+        setScrollOffset((value) => Math.min(value + 1, maxScrollOffset));
+      }
       return;
     }
 
-    if (mode === "chat" && key.downArrow && editor.text.length === 0) {
-      setScrollOffset((value) => Math.max(value - 1, 0));
+    if (mode === "chat" && key.downArrow && (editor.text.length === 0 || historyIndex !== undefined)) {
+      if (historyIndex !== undefined) {
+        const nextIndex = historyIndex + 1;
+        if (nextIndex < promptHistory.length) {
+          setHistoryIndex(nextIndex);
+          updateEditor(createPromptEditor(promptHistory[nextIndex]));
+        } else {
+          setHistoryIndex(undefined);
+          updateEditor(createPromptEditor());
+        }
+      } else {
+        setScrollOffset((value) => Math.max(value - 1, 0));
+      }
       return;
     }
 
@@ -762,12 +791,14 @@ export function AgentTui(props: AgentTuiProps): React.ReactElement {
     if (key.return || isReturnInput(input)) {
       const prompt = editor.text.trim();
       updateEditor(createPromptEditor());
+      setHistoryIndex(undefined);
       void handlePrompt(prompt);
       return;
     }
 
     if (key.backspace || key.delete) {
       updateEditor(editPrompt(editor, { type: key.backspace ? "backspace" : "delete" }));
+      setHistoryIndex(undefined);
       return;
     }
 
@@ -793,6 +824,7 @@ export function AgentTui(props: AgentTuiProps): React.ReactElement {
 
     if (input) {
       updateEditor(editPrompt(editor, { type: "insert", value: input }));
+      setHistoryIndex(undefined);
     }
   });
 
@@ -812,7 +844,7 @@ export function AgentTui(props: AgentTuiProps): React.ReactElement {
         </Box>
         <Box gap={2} flexWrap="wrap">
           <Text dimColor>commands <Text color="white">/model /workspace /diff /trace /mode /skill /mcp /agent /exit</Text></Text>
-          <Text dimColor>keys <Text color="white">Ctrl+P PageUp/PageDown Ctrl+T/O/D Ctrl+C</Text></Text>
+          <Text dimColor>keys <Text color="white">Ctrl+P PageUp/PageDown F12 details Ctrl+C</Text></Text>
         </Box>
       </Box>
 
@@ -852,6 +884,10 @@ export function AgentTui(props: AgentTuiProps): React.ReactElement {
         <McpMenu mode={mode} servers={config.mcpServers ?? []} results={mcpResults} />
         <AgentMenu mode={mode} agents={subAgentItems} selectedSubAgent={selectedSubAgent} activeSubAgentId={config.activeSubAgentId ?? "default"} />
         <ApprovalPrompt mode={mode} request={pendingApproval} />
+      </Box>
+
+      <Box paddingX={1}>
+        <Text dimColor>{contextStatus ?? "context waiting for first turn"}</Text>
       </Box>
 
       <Box marginTop={1} borderStyle="single" borderColor={mode === "chat" ? "gray" : "cyan"} paddingX={1}>
@@ -1148,7 +1184,7 @@ function filterDisplayEvents(
       continue;
     }
 
-    if ((event.kind === "success" || event.kind === "error") && !expandedKinds.tool && looksLikeToolOutput(event.text)) {
+    if ((event.kind === "tool" || event.kind === "success" || event.kind === "error") && !expandedKinds.tool && looksLikeToolOutput(event.text)) {
       hiddenTool++;
       continue;
     }
@@ -1162,13 +1198,13 @@ function filterDisplayEvents(
   }
 
   if (hiddenThinking > 0) {
-    filtered.push({ kind: "muted", text: `Thinking collapsed (${hiddenThinking}) · press t` });
+    filtered.push({ kind: "muted", text: `Thinking collapsed (${hiddenThinking}) · press F12` });
   }
   if (hiddenTool > 0) {
-    filtered.push({ kind: "muted", text: `Tool output collapsed (${hiddenTool}) · press o` });
+    filtered.push({ kind: "muted", text: `Tool output collapsed (${hiddenTool}) · press F12` });
   }
   if (hiddenDiff > 0) {
-    filtered.push({ kind: "muted", text: `Diff detail collapsed (${hiddenDiff}) · press d` });
+    filtered.push({ kind: "muted", text: `Diff detail collapsed (${hiddenDiff}) · press F12` });
   }
 
   return filtered;
@@ -1416,6 +1452,7 @@ function eventTextStyle(kind: RenderedAgentEventKind): { color?: string; dimColo
     warning: { color: "yellow" },
     error: { color: "red" },
     diff: { color: "magenta" },
+    context: { color: "gray", dimColor: true },
     muted: { color: "gray", dimColor: true }
   };
   return styles[kind];
@@ -1580,6 +1617,10 @@ function completionRank(value: string, query: string): number {
 
 function isPromptEditingMode(mode: Mode): boolean {
   return mode === "chat" || mode === "command" || mode === "file-completion" || mode === "skill-completion";
+}
+
+function isDetailToggleKey(input: string, key: Record<string, unknown>): boolean {
+  return input === "\u001b[24~" || key.f12 === true;
 }
 
 export async function listWorkspaceFiles(workspacePath: string): Promise<string[]> {

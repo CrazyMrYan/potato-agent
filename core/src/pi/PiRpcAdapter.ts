@@ -45,8 +45,12 @@ export class PiRpcAdapter implements PiAdapter {
       await client.start();
       const stream = new AsyncEventQueue<AgentEvent>();
       const mapper = new PiEventMapper(input.taskId);
+      let sawAssistantText = false;
       const unsubscribe = client.onEvent((event) => {
         for (const mapped of mapper.map(event as RawPiEvent)) {
+          if (mapped.type === "assistant.delta" && mapped.channel === "text" && mapped.text.trim()) {
+            sawAssistantText = true;
+          }
           stream.push(mapped);
         }
       });
@@ -55,8 +59,12 @@ export class PiRpcAdapter implements PiAdapter {
         try {
           await client.prompt(input.prompt);
           await client.waitForIdle(this.options.timeoutMs ?? 120_000);
-          const summary = (await client.getLastAssistantText()) ?? "Pi 运行完成，但没有返回最终文本。";
-          stream.push({ type: "task.finished", taskId: input.taskId, summary });
+          const summary = await resolveFinalSummary(client, sawAssistantText);
+          if (summary.type === "failed") {
+            stream.push(summary.event(input.taskId));
+            return;
+          }
+          stream.push({ type: "task.finished", taskId: input.taskId, summary: summary.summary });
         } catch (error) {
           stream.push(this.toFailedEvent(input.taskId, client, error));
         } finally {
@@ -103,6 +111,43 @@ export class PiRpcAdapter implements PiAdapter {
     }
     return String(error);
   }
+}
+
+function resolveFinalSummary(
+  client: PiRpcClientLike,
+  sawAssistantText: boolean
+): Promise<{ type: "finished"; summary: string } | { type: "failed"; event: (taskId: string) => AgentEvent }> {
+  return client.getLastAssistantText().then((summary) => {
+    if (summary !== null) {
+      return { type: "finished", summary };
+    }
+
+    if (sawAssistantText) {
+      return { type: "finished", summary: "" };
+    }
+
+    const stderr = client.getStderr().trim();
+    if (stderr) {
+      return {
+        type: "failed",
+        event: (taskId: string) => ({
+          type: "task.failed",
+          taskId,
+          error: {
+            code: "PI_EMPTY_RESPONSE",
+            message: firstLine(stderr),
+            cause: stderr
+          }
+        })
+      };
+    }
+
+    return { type: "finished", summary: "Pi 运行完成，但没有返回最终文本。" };
+  });
+}
+
+function firstLine(value: string): string {
+  return value.split(/\r?\n/, 1)[0] ?? value;
 }
 
 class AsyncEventQueue<T> implements AsyncIterable<T> {

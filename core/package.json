@@ -13,7 +13,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@earendil-works/pi-coding-agent": "^0.80.3",
     "@potato/protocol": "workspace:*",
-    "@earendil-works/pi-coding-agent": "^0.80.3"
+    "gpt-tokenizer": "^3.4.0"
   }
 }

@@ -43,12 +43,14 @@ export class AgentSession {
 
       await this.trace({ timestamp: nowIso(), taskId: event.taskId, kind: "event", event });
       if (event.type === "task.finished") {
+        this.contextBudget?.record?.(input, event.summary);
         if (this.subAgent && this.subAgent.id !== "default" && this.subAgent.enabled !== false) {
           yield* this.emitSubAgentFinish(event.taskId, this.subAgent, event.summary);
         }
         await this.trace({ timestamp: nowIso(), taskId: event.taskId, kind: "task.finished", summary: event.summary });
       }
       if (event.type === "task.failed") {
+        this.contextBudget?.record?.(input, event.error.message);
         if (this.subAgent && this.subAgent.id !== "default" && this.subAgent.enabled !== false) {
           const failed: AgentEvent = {
             type: "subagent.failed",

@@ -16,13 +16,7 @@ describe("EventStreamRenderer", () => {
       .filter((line) => line.length > 0)
       .flatMap((line) => line.split("\n"));
 
-    expect(lines).toEqual([
-      "Pi 开始新一轮推理",
-      "The user",
-      "read 读取文件：src/index.ts",
-      "项目概览",
-      "这是模型最终输出"
-    ]);
+    expect(lines).toEqual(["Pi 开始新一轮推理", "The user", "read 读取文件：src/index.ts", "项目概览", "这是模型最终输出"]);
   });
 
   it("keeps long tool results compact", () => {
@@ -44,7 +38,38 @@ describe("EventStreamRenderer", () => {
     renderer.render({ type: "assistant.delta", taskId: "task_1", channel: "text", text: "## Plan\n\n- test\n\n```ts\nconst x = 1;\n```" });
     const output = renderer.flush();
 
-    expect(output).toBe("Plan\n\n• test\n\nconst x = 1;");
+    expect(output).toContain("Plan");
+    expect(output).not.toContain("## Plan");
+    expect(output).toContain("* test");
+    expect(output).toContain("const x = 1;");
+  });
+
+  it("renders markdown tables through a terminal markdown renderer", () => {
+    const renderer = new EventStreamRenderer({ colors: false });
+
+    renderer.render({ type: "assistant.delta", taskId: "task_1", channel: "text", text: "| Name | Status |\n| --- | --- |\n| ctx | ok |" });
+    const output = renderer.flush();
+
+    expect(output).toContain("Name");
+    expect(output).toContain("Status");
+    expect(output).toContain("ctx");
+    expect(output).toContain("ok");
+    expect(output).not.toContain("| --- | --- |");
+  });
+
+  it("renders markdown tables from final task summaries", () => {
+    const renderer = new EventStreamRenderer({ colors: false });
+    const output = renderer.render({
+      type: "task.finished",
+      taskId: "task_1",
+      summary: "### 5. Core 层独有依赖\n| 依赖 | 用途 |\n|------|------|\n| `gpt-tokenizer` | Token 计数/分词 |\n\n**总结**：项目最核心的依赖是 **`@earendil-works/pi-coding-agent`**"
+    });
+
+    expect(output).toContain("5. Core 层独有依赖");
+    expect(output).toContain("gpt-tokenizer");
+    expect(output).toContain("Token 计数/分词");
+    expect(output).not.toContain("|------|------|");
+    expect(output).toContain("@earendil-works/pi-coding-agent");
   });
 
   it("renders context budget and compaction status", () => {
@@ -59,7 +84,7 @@ describe("EventStreamRenderer", () => {
         ratio: 0.82,
         compactAtRatio: 0.75
       })
-    ).toBe("context ◉◉◉◉◉◉◉◉○○ 82% · compact at 75%");
+    ).toBe("context ◉◉◉◉◉◉◉◉○○ 82% · 820/1000 tokens · compact at 75%");
     expect(
       renderer.render({
         type: "context.compacted",

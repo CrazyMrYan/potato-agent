@@ -2,6 +2,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { DEFAULT_SYSTEM_PROMPT } from "../src/config/AgentConfig.js";
 import { ensureDefaultAgentConfig, FileAgentConfigStore, mergeAgentConfig } from "../src/config/AgentConfigStore.js";
 
 describe("FileAgentConfigStore", () => {
@@ -50,7 +51,8 @@ describe("mergeAgentConfig", () => {
       provider: "deepseek",
       model: "deepseek-reasoner",
       apiKey: "runtime",
-      workspacePath: "/repo"
+      workspacePath: "/repo",
+      systemPrompt: DEFAULT_SYSTEM_PROMPT
     });
   });
 });

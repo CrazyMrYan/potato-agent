@@ -1,55 +1,21 @@
-export function renderMarkdownText(markdown: string): string {
-  const lines = markdown.trim().split("\n");
-  const rendered: string[] = [];
-  let inCodeBlock = false;
+import { Marked } from "marked";
+import { markedTerminal } from "marked-terminal";
 
-  for (const line of lines) {
-    if (line.trim().startsWith("```")) {
-      inCodeBlock = !inCodeBlock;
-      continue;
-    }
+export type MarkdownRendererOptions = {
+  colors?: boolean;
+};
 
-    if (inCodeBlock) {
-      rendered.push(line);
-      continue;
-    }
+export function renderMarkdownText(markdown: string, options: MarkdownRendererOptions = {}): string {
+  const marked = new Marked(
+    markedTerminal({
+      reflowText: false,
+      width: 100,
+      showSectionPrefix: false,
+      tab: 2,
+      emoji: false,
+      color: options.colors ?? false
+    })
+  );
 
-    rendered.push(renderMarkdownLine(line));
-  }
-
-  return trimBlankEdges(rendered).join("\n");
-}
-
-function renderMarkdownLine(line: string): string {
-  const heading = line.match(/^\s{0,3}#{1,6}\s+(.+)$/);
-  if (heading) {
-    return stripInlineMarkdown(heading[1] ?? "");
-  }
-
-  const bullet = line.match(/^(\s*)[-*]\s+(.+)$/);
-  if (bullet) {
-    return `${bullet[1]}• ${stripInlineMarkdown(bullet[2] ?? "")}`;
-  }
-
-  const quote = line.match(/^\s*>\s?(.+)$/);
-  if (quote) {
-    return `│ ${stripInlineMarkdown(quote[1] ?? "")}`;
-  }
-
-  return stripInlineMarkdown(line);
-}
-
-function stripInlineMarkdown(value: string): string {
-  return value.replace(/`([^`]+)`/g, "$1").replace(/\*\*([^*]+)\*\*/g, "$1").replace(/\*([^*]+)\*/g, "$1");
-}
-
-function trimBlankEdges(lines: string[]): string[] {
-  const next = [...lines];
-  while (next[0]?.trim() === "") {
-    next.shift();
-  }
-  while (next.at(-1)?.trim() === "") {
-    next.pop();
-  }
-  return next;
+  return marked.parse(markdown.trim(), { async: false }).trim();
 }

@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   DEFAULT_AGENT_PERMISSION_POLICY,
+  DEFAULT_SYSTEM_PROMPT,
   buildPiRpcArgs,
   buildRuntimeToolConfig,
   mergeAgentConfig,
@@ -87,6 +88,16 @@ describe("Agent runtime config", () => {
     ]);
   });
 
+  it("uses a Potato system identity by default", () => {
+    expect(mergeAgentConfig({}, {})).toEqual({ systemPrompt: DEFAULT_SYSTEM_PROMPT });
+    expect(buildPiRpcArgs({ permissionPolicy: { mode: "confirm" } })).toEqual([
+      "--system-prompt",
+      DEFAULT_SYSTEM_PROMPT,
+      "--tools",
+      "read,ls,grep,find,bash,edit,write"
+    ]);
+  });
+
   it("maps permission modes to the tools Pi is allowed to execute", () => {
     expect(buildRuntimeToolConfig({ permissionPolicy: { mode: "confirm" } })).toEqual({
       allow: ["read", "ls", "grep", "find", "bash", "edit", "write"],
@@ -105,7 +116,12 @@ describe("Agent runtime config", () => {
   });
 
   it("exposes mutating tools to Pi in manual mode so runtime approval can gate them", () => {
-    expect(buildPiRpcArgs({ permissionPolicy: { mode: "confirm" } })).toEqual(["--tools", "read,ls,grep,find,bash,edit,write"]);
+    expect(buildPiRpcArgs({ permissionPolicy: { mode: "confirm" } })).toEqual([
+      "--system-prompt",
+      DEFAULT_SYSTEM_PROMPT,
+      "--tools",
+      "read,ls,grep,find,bash,edit,write"
+    ]);
   });
 
   it("materializes manual approval extension with file diff preview", () => {
@@ -128,6 +144,8 @@ describe("Agent runtime config", () => {
         ]
       })
     ).toEqual([
+      "--system-prompt",
+      DEFAULT_SYSTEM_PROMPT,
       "--no-skills",
       "--skill",
       "/repo/.potato/skills/.builtin/enabled",

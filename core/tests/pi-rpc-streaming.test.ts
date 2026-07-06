@@ -10,6 +10,8 @@ class FakeRpcClient implements PiRpcClientLike {
   private resolveIdle?: () => void;
   started = false;
   promptStarted = false;
+  lastAssistantText: string | null = "完成";
+  stderr = "";
 
   async start(): Promise<void> {
     this.started = true;
@@ -36,11 +38,11 @@ class FakeRpcClient implements PiRpcClientLike {
   }
 
   async getLastAssistantText(): Promise<string | null> {
-    return "完成";
+    return this.lastAssistantText;
   }
 
   getStderr(): string {
-    return "";
+    return this.stderr;
   }
 
   async stop(): Promise<void> {}
@@ -199,6 +201,53 @@ describe("PiRpcAdapter streaming", () => {
     });
     expect(events).toContainEqual(expect.objectContaining({ type: "tool.started", tool: "read", summary: "读取文件：src/index.ts" }));
     expect(events).toContainEqual(expect.objectContaining({ type: "tool.started", tool: "bash", summary: "执行命令：rg --files" }));
+  });
+
+  it("surfaces stderr as a failed task when Pi becomes idle without assistant output", async () => {
+    const client = new FakeRpcClient();
+    client.lastAssistantText = null;
+    client.stderr = "401 invalid api key\ncheck DEEPSEEK_API_KEY";
+    const adapter = new PiRpcAdapter(
+      {
+        provider: "deepseek",
+        model: "deepseek-reasoner",
+        workspacePath: "/repo",
+        apiKeyEnvName: "DEEPSEEK_API_KEY",
+        apiKey: "bad-key",
+        timeoutMs: 1000,
+        permissionPolicy: { mode: "bypass" }
+      },
+      { createClient: () => client }
+    );
+    const input: RunTaskInput = {
+      taskId: "task_1",
+      workspacePath: "/repo",
+      prompt: "今天长沙天气怎么样",
+      mode: "run",
+      approvalMode: "manual"
+    };
+
+    const events: AgentEvent[] = [];
+    const consume = (async () => {
+      for await (const event of adapter.run(input)) {
+        events.push(event);
+      }
+    })();
+
+    await waitUntil(() => client.hasListeners() && client.promptStarted);
+    client.finish();
+    await consume;
+
+    expect(events).toContainEqual({
+      type: "task.failed",
+      taskId: "task_1",
+      error: {
+        code: "PI_EMPTY_RESPONSE",
+        message: "401 invalid api key",
+        cause: "401 invalid api key\ncheck DEEPSEEK_API_KEY"
+      }
+    });
+    expect(events).not.toContainEqual(expect.objectContaining({ type: "task.finished", summary: "Pi 运行完成，但没有返回最终文本。" }));
   });
 });
 

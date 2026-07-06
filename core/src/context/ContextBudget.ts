@@ -1,4 +1,5 @@
 import type { RunTaskInput } from "@potato/protocol";
+import { countTokens } from "gpt-tokenizer";
 
 export type ContextBudgetSnapshot = {
   usedTokens: number;
@@ -16,22 +17,29 @@ export type ContextBudgetManager = {
   maxTokens: number;
   compactAtRatio: number;
   estimate(input: RunTaskInput): ContextBudgetSnapshot;
+  record?(input: RunTaskInput, output?: string): void;
   compact(input: RunTaskInput, budget: ContextBudgetSnapshot): Promise<ContextCompactionResult>;
 };
 
 export class HeuristicContextBudgetManager implements ContextBudgetManager {
+  private accumulatedTokens = 0;
+
   constructor(
     readonly maxTokens: number = 120_000,
     readonly compactAtRatio: number = 0.75
   ) {}
 
   estimate(input: RunTaskInput): ContextBudgetSnapshot {
-    const usedTokens = estimateTokens(input.prompt);
+    const usedTokens = this.accumulatedTokens + estimateTokens(input.prompt);
     return {
       usedTokens,
       maxTokens: this.maxTokens,
-      ratio: this.maxTokens > 0 ? roundRatio(usedTokens / this.maxTokens) : 0
+      ratio: this.maxTokens > 0 ? usedTokens / this.maxTokens : 0
     };
+  }
+
+  record(input: RunTaskInput, output = ""): void {
+    this.accumulatedTokens += estimateTokens(`${input.prompt}\n${output}`);
   }
 
   async compact(input: RunTaskInput, budget: ContextBudgetSnapshot): Promise<ContextCompactionResult> {
@@ -56,9 +64,5 @@ export function estimateTokens(text: string): number {
     return 0;
   }
 
-  return Math.ceil(normalized.length / 4);
-}
-
-function roundRatio(value: number): number {
-  return Math.round(value * 100) / 100;
+  return countTokens(normalized);
 }

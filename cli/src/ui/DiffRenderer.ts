@@ -1,4 +1,5 @@
 import type { ChangeSet } from "@potato/protocol";
+import parseDiff from "parse-diff";
 
 export type RenderedDiffLineKind = "header" | "file" | "hunk" | "add" | "remove" | "context";
 
@@ -27,23 +28,39 @@ export function renderChangeSetLines(changeSet: ChangeSet): string[] {
 }
 
 export function renderPatch(patch: string, maxLines = 120): RenderedDiffLine[] {
-  const rawLines = patch.split("\n").filter((line) => line.length > 0);
-  const lines = rawLines.slice(0, maxLines).map(renderPatchLine);
-  if (rawLines.length > maxLines) {
-    lines.push({ kind: "context", text: `  ... ${rawLines.length - maxLines} more diff lines` });
+  const parsedLines = parsePatchWithLibrary(patch);
+  const lines = parsedLines.slice(0, maxLines);
+  if (parsedLines.length > maxLines) {
+    lines.push({ kind: "context", text: `  ... ${parsedLines.length - maxLines} more diff lines` });
   }
   return lines;
 }
 
-function renderPatchLine(line: string): RenderedDiffLine {
-  if (line.startsWith("+") && !line.startsWith("+++")) {
-    return { kind: "add", text: `+ ${line.slice(1)}` };
+function parsePatchWithLibrary(patch: string): RenderedDiffLine[] {
+  const files = parseDiff(patch);
+  if (files.length === 0) {
+    return patch.split("\n").filter(Boolean).map(renderFallbackPatchLine);
   }
-  if (line.startsWith("-") && !line.startsWith("---")) {
-    return { kind: "remove", text: `- ${line.slice(1)}` };
-  }
-  if (line.startsWith("@@")) {
-    return { kind: "hunk", text: `  ${line}` };
-  }
+
+  return files.flatMap((file) =>
+    file.chunks.flatMap((chunk) => [
+      { kind: "hunk" as const, text: `  ${chunk.content}` },
+      ...chunk.changes.map((change) => {
+        if (change.type === "add") {
+          return { kind: "add" as const, text: `+ ${change.content.slice(1)}` };
+        }
+        if (change.type === "del") {
+          return { kind: "remove" as const, text: `- ${change.content.slice(1)}` };
+        }
+        return { kind: "context" as const, text: `  ${change.content}` };
+      })
+    ])
+  );
+}
+
+function renderFallbackPatchLine(line: string): RenderedDiffLine {
+  if (line.startsWith("+") && !line.startsWith("+++")) return { kind: "add", text: `+ ${line.slice(1)}` };
+  if (line.startsWith("-") && !line.startsWith("---")) return { kind: "remove", text: `- ${line.slice(1)}` };
+  if (line.startsWith("@@")) return { kind: "hunk", text: `  ${line}` };
   return { kind: "context", text: `  ${line}` };
 }

@@ -60,6 +60,13 @@ export const DEFAULT_AGENT_PERMISSION_POLICY: Required<AgentPermissionPolicy> = 
   deny: []
 };
 
+export const DEFAULT_SYSTEM_PROMPT = [
+  "You are Potato, a coding agent for software engineering work.",
+  "You help users understand, edit, test, and ship code in the current workspace.",
+  "When asked who you are, identify yourself as Potato, not Pi Coding Agent.",
+  "Be direct, technically rigorous, and do not claim capabilities that the active adapter does not support."
+].join("\n");
+
 const MUTATING_BUILTIN_TOOLS = ["bash", "edit", "write"];
 
 export function mergeAgentConfig(stored: AgentConfig, runtime: AgentConfig): AgentConfig {
@@ -71,6 +78,8 @@ export function mergeAgentConfig(stored: AgentConfig, runtime: AgentConfig): Age
   if (stored.permissionPolicy || runtime.permissionPolicy) {
     merged.permissionPolicy = mergePermissionPolicy(stored.permissionPolicy, runtime.permissionPolicy);
   }
+
+  merged.systemPrompt = merged.systemPrompt ?? DEFAULT_SYSTEM_PROMPT;
 
   return merged;
 }
@@ -84,7 +93,7 @@ export function buildPiRpcArgs(config: AgentConfig): string[] {
   const runtimeTools = buildRuntimeToolConfig(config);
   const policy = resolveAgentPermissionPolicy(config);
 
-  pushValue(args, "--system-prompt", config.systemPrompt);
+  pushValue(args, "--system-prompt", config.systemPrompt ?? DEFAULT_SYSTEM_PROMPT);
   for (const prompt of config.appendSystemPrompt ?? []) {
     pushValue(args, "--append-system-prompt", prompt);
   }

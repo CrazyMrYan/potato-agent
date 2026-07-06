@@ -107,6 +107,7 @@ export class AgentLoop {
     }
 
     if (finalEvent) {
+      this.dependencies.contextBudget?.record?.(input, finalEvent.type === "task.finished" ? finalEvent.summary : finalEvent.error.message);
       await this.traceEvent(finalEvent);
       if (finalEvent.type === "task.finished") {
         await this.trace({ timestamp: nowIso(), taskId: input.taskId, kind: "task.finished", summary: finalEvent.summary });

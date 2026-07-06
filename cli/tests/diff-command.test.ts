@@ -44,7 +44,6 @@ describe("diff command", () => {
     expect(write.mock.calls.map((call) => call[0])).toEqual([
       "diff: 1 file changed",
       "modified src/a.ts",
-      "  diff --git a/src/a.ts b/src/a.ts",
       "  @@ -1 +1 @@",
       "- old",
       "+ new"

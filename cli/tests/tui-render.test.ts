@@ -33,7 +33,7 @@ describe("AgentTui render", () => {
     expect(frame).toContain("subagent default");
     expect(frame).toContain("network unknown");
     expect(frame).toContain("commands /model /workspace /diff /trace /mode /skill /mcp /agent /exit");
-    expect(frame).toContain("Ctrl+T/O/D");
+    expect(frame).toContain("F12 details");
     expect(frame).not.toContain("input");
   });
 
@@ -67,6 +67,110 @@ describe("AgentTui render", () => {
     rendered.stdin.write("\u0014");
     await waitForFrame(rendered.lastFrame, "hidden reasoning");
     expect(rendered.lastFrame()).toContain("hidden reasoning");
+  });
+
+  it("pins context budget above the prompt instead of adding it to transcript", async () => {
+    const workspacePath = await mkdtemp(join(tmpdir(), "coding-agent-tui-"));
+    const rendered = render(
+      React.createElement(AgentTui, {
+        config: {
+          workspacePath,
+          provider: "deepseek",
+          model: "deepseek-reasoner"
+        },
+        createSession: () => ({
+          async start() {},
+          async stop() {},
+          async *send() {
+            yield { type: "context.budget" as const, taskId: "task_1", usedTokens: 820, maxTokens: 1000, ratio: 0.82, compactAtRatio: 0.75 };
+            yield { type: "task.finished" as const, taskId: "task_1", summary: "done" };
+          },
+          async approve() {}
+        })
+      })
+    );
+
+    rendered.stdin.write("task");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    rendered.stdin.write("\r");
+    await waitForFrame(rendered.lastFrame, "done");
+    const frame = rendered.lastFrame() ?? "";
+
+    expect(frame).toContain("context ◉◉◉◉◉◉◉◉○○ 82%");
+    expect(frame).toContain("820/1000 tokens");
+    expect(frame).toContain("compact at 75%");
+    expect(frame).not.toContain("context ◉◉◉◉◉◉◉◉○○ 82%\n  done");
+  });
+
+  it("recalls previous prompts with up and down arrows", async () => {
+    const workspacePath = await mkdtemp(join(tmpdir(), "coding-agent-tui-"));
+    const rendered = render(
+      React.createElement(AgentTui, {
+        config: {
+          workspacePath,
+          provider: "deepseek",
+          model: "deepseek-reasoner"
+        },
+        createSession: () => ({
+          async start() {},
+          async stop() {},
+          async *send(prompt: string) {
+            yield { type: "task.finished" as const, taskId: `task_${prompt}`, summary: "done" };
+          },
+          async approve() {}
+        })
+      })
+    );
+
+    rendered.stdin.write("first");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    rendered.stdin.write("\r");
+    await waitForFrame(rendered.lastFrame, "done");
+    rendered.stdin.write("second");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    rendered.stdin.write("\r");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    rendered.stdin.write("\u001b[A");
+    await waitForFrame(rendered.lastFrame, "second");
+    rendered.stdin.write("\u001b[A");
+    await waitForFrame(rendered.lastFrame, "first");
+    rendered.stdin.write("\u001b[B");
+    await waitForFrame(rendered.lastFrame, "second");
+  });
+
+  it("hides tool calls by default and expands them with Ctrl+O", async () => {
+    const workspacePath = await mkdtemp(join(tmpdir(), "coding-agent-tui-"));
+    const rendered = render(
+      React.createElement(AgentTui, {
+        config: {
+          workspacePath,
+          provider: "deepseek",
+          model: "deepseek-reasoner"
+        },
+        createSession: () => ({
+          async start() {},
+          async stop() {},
+          async *send() {
+            yield { type: "tool.started" as const, taskId: "task_1", tool: "read", summary: "读取文件：README.md" };
+            yield { type: "tool.finished" as const, taskId: "task_1", tool: "read", success: true, output: "file output" };
+            yield { type: "task.finished" as const, taskId: "task_1", summary: "done" };
+          },
+          async approve() {}
+        })
+      })
+    );
+
+    rendered.stdin.write("task");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    rendered.stdin.write("\r");
+    await waitForFrame(rendered.lastFrame, "done");
+    expect(rendered.lastFrame()).not.toContain("读取文件：README.md");
+    expect(rendered.lastFrame()).not.toContain("file output");
+
+    rendered.stdin.write("\u000f");
+    await waitForFrame(rendered.lastFrame, "读取文件：README.md");
+    expect(rendered.lastFrame()).toContain("file output");
   });
 
   it("does not duplicate the slash while command completion is open", async () => {

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { AgentEvent } from "@potato/protocol";
+import { HeuristicContextBudgetManager } from "../src/context/ContextBudget.js";
 import type { PiSessionAdapter } from "../src/pi/PiSessionAdapter.js";
 import { AgentSessionFactory } from "../src/session/AgentSessionFactory.js";
 import type { TraceEntry, TraceStore } from "../src/trace/TraceStore.js";
@@ -113,6 +114,33 @@ describe("AgentSessionFactory", () => {
     expect(events.map((event) => event.type)).toEqual(["context.budget", "context.compacted", "task.finished"]);
     expect(traceStore.entries.map((entry) => entry.kind)).toContain("context.budget");
     expect(traceStore.entries.map((entry) => entry.kind)).toContain("context.compacted");
+  });
+
+  it("accumulates context budget across session turns", async () => {
+    const adapter = new FakeSessionAdapter();
+    const factory = new AgentSessionFactory({
+      createAdapter: () => adapter,
+      createContextBudget: () => new HeuristicContextBudgetManager(100, 0.75),
+      env: { DEEPSEEK_API_KEY: "test-key" }
+    });
+
+    const session = await factory.create({
+      provider: "deepseek",
+      model: "deepseek-reasoner",
+      workspacePath: "/repo"
+    });
+
+    let firstBudget = 0;
+    for await (const event of session.send("first prompt")) {
+      if (event.type === "context.budget") firstBudget = event.usedTokens;
+    }
+
+    let secondBudget = 0;
+    for await (const event of session.send("second prompt")) {
+      if (event.type === "context.budget") secondBudget = event.usedTokens;
+    }
+
+    expect(secondBudget).toBeGreaterThan(firstBudget);
   });
 
   it("forwards approval decisions to the active adapter", async () => {

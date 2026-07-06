@@ -57,6 +57,49 @@ pnpm build:npm:cli
 - 高级配置优先放到 TUI 菜单、workspace 配置或后续桌面端设置里。
 - 不在 CLI 参数里堆太多长期产品配置，避免命令入口失控。
 
+## 标准化和外部依赖替换备忘
+
+当前项目里以下能力不应长期手写，适合优先采用成熟依赖或标准协议：
+
+- Markdown 渲染：已从手写 renderer 切到 `marked` + `marked-terminal`，解决表格、代码块和常见 Markdown 的终端渲染问题。
+- 表格渲染：已复用 `marked-terminal` 的表格能力。不要再手写 Markdown 表格解析。
+- Diff 渲染：已改为基于 `parse-diff` 解析 unified diff，再输出终端友好的文本。后续如要语法高亮或 side-by-side，可继续叠加 `cli-highlight` 或 Ink 专用组件。
+- Token 估算：已从 `chars / 4` 改为 `gpt-tokenizer`。后续多 provider 精准计数仍应接模型供应商 tokenizer。
+- 上下文压缩：当前是接口和事件闭环，不是真正模型摘要。后续应接入模型 summarizer，并把历史消息裁剪/替换为 summary。
+- 模型适配：桌面端前评估 OpenAI-compatible、LiteLLM、Vercel AI SDK、OpenRouter。当前 Pi RPC 不急于绑定这些。
+- MCP 注入：当前只做配置检测，不应虚标为已接管。后续应基于 Pi SDK session 或独立 runtime adapter 实现真实注入。
+- 终端快捷键和输入：当前 Ink TUI 自行处理编辑、补全、快捷键和历史回填。若交互复杂度继续上升，需要评估专门的 readline/editor 抽象，避免在 `AgentTui.tsx` 里堆状态机。
+
+## 当前上下文压缩机制
+
+当前实现位置：
+
+- `core/src/context/ContextBudget.ts`
+- `core/src/loop/AgentLoop.ts`
+- `core/src/session/AgentSession.ts`
+
+判断逻辑：
+
+- `HeuristicContextBudgetManager` 默认 `maxTokens = 120000`。
+- 默认 `compactAtRatio = 0.75`。
+- `estimateTokens(text)` 当前使用 `gpt-tokenizer`。
+- `ratio = usedTokens / maxTokens`。
+- 当 `ratio >= compactAtRatio` 时触发 `context.compacted`。
+
+当前压缩算法：
+
+- 现在不是模型摘要，也不是历史消息真实裁剪。
+- 当前 `compact()` 生成一个固定结构的 heuristic summary，包含 task、workspace、state 和 next。
+- token 使用量会在 session 内累计 prompt 和 final output，因此下一轮会看到 `used/max tokens` 增长；百分比在大窗口下可能仍显示 `<1%`。
+- 这个阶段主要用于打通 AgentLoop、AgentSession、trace、TUI 展示和验证路径。
+
+后续需要补齐：
+
+- 用真实模型对历史上下文做 summary。
+- 保留目标、关键文件、已确认决策、未完成事项、风险和下一步。
+- 把旧消息窗口替换为 summary，而不是只发事件。
+- 针对不同模型/provider 切换对应 tokenizer。
+
 ## 桌面端前置待办
 
 桌面端阶段开始前需要重新评估：

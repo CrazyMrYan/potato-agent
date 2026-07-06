@@ -6,6 +6,11 @@ import type { PiAdapter } from "../src/pi/PiAdapter.js";
 import type { TraceEntry, TraceStore } from "../src/trace/TraceStore.js";
 
 describe("AgentLoop", () => {
+  it("estimates tokens with a tokenizer instead of character division", async () => {
+    const { estimateTokens } = await import("../src/context/ContextBudget.js");
+    expect(estimateTokens("hello world")).toBe(2);
+  });
+
   it("emits task lifecycle, records trace, and emits diff before final event", async () => {
     const traceStore = new MemoryTraceStore();
     const loop = new AgentLoop(new StaticAdapter(), {

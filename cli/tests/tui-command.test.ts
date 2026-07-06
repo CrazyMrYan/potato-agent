@@ -59,13 +59,14 @@ describe("runTuiCommand", () => {
       }
     );
 
-    expect(render).toHaveBeenCalledWith({
-      workspacePath: "/repo",
-      provider: "deepseek",
-      model: "runtime-model",
-      apiKey: "stored-key",
-      timeoutMs: undefined
-    });
+    expect(render).toHaveBeenCalledWith(
+      expect.objectContaining({
+        workspacePath: "/repo",
+        provider: "deepseek",
+        model: "runtime-model",
+        apiKey: "stored-key"
+      })
+    );
   });
 
   it("loads configuration through the default config initializer seam", async () => {
@@ -75,7 +76,7 @@ describe("runTuiCommand", () => {
     await runTuiCommand({ cwd: "/repo" }, { render, loadConfig, resolveWorkspacePath: async () => "/repo" });
 
     expect(loadConfig).toHaveBeenCalledWith("/repo");
-    expect(render).toHaveBeenCalledWith({ workspacePath: "/repo" });
+    expect(render).toHaveBeenCalledWith(expect.objectContaining({ workspacePath: "/repo" }));
   });
 
   it("creates a default workspace config file on startup", async () => {
