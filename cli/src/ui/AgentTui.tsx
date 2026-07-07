@@ -79,6 +79,7 @@ const commandOptions = [
   { command: "/diff", label: "/diff", description: "显示当前 Git 变更" },
   { command: "/trace", label: "/trace", description: "显示最近 trace" },
   { command: "/cancel", label: "/cancel", description: "取消当前任务" },
+  { command: "/status", label: "/status", description: "显示当前运行时配置" },
   { command: "/details", label: "/details", description: "设置 thinking/tool/diff 默认展开" },
   { command: "/compact", label: "/compact", description: "主动压缩当前上下文" },
   { command: "/plan", label: "/plan", description: "进入计划模式，不直接改代码" },
@@ -511,6 +512,11 @@ export function AgentTui(props: AgentTuiProps): React.ReactElement {
 
       if (prompt === "/workspace") {
         appendEvent({ kind: "muted", text: `workspace: ${workspacePath}` });
+        return;
+      }
+
+      if (prompt === "/status") {
+        appendEvent({ kind: "muted", text: formatRuntimeStatus(config, workspacePath) });
         return;
       }
 
@@ -1735,6 +1741,14 @@ function isPlanExecutionConfirmation(prompt: string): boolean {
 
 function formatModel(config: AgentConfig): string {
   return `${config.provider ?? "未配置"}/${config.model ?? "未配置"}`;
+}
+
+function formatRuntimeStatus(config: AgentConfig, workspacePath: string): string {
+  const adapter = config.adapter ?? "rpc";
+  const provider = config.provider ?? "unknown";
+  const model = config.model ?? "unknown";
+  const permission = config.permissionPolicy?.mode ?? "confirm";
+  return `status: ${adapter} | ${provider}/${model} | ${permission} | ${workspacePath}`;
 }
 
 function formatPermissionMode(mode: AgentPermissionMode): string {

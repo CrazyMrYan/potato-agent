@@ -805,6 +805,26 @@ describe("AgentTui render", () => {
     await waitForFrame(rendered.lastFrame, "verification passed: pnpm test");
   });
 
+  it("shows runtime status from /status", async () => {
+    const workspacePath = await mkdtemp(join(tmpdir(), "coding-agent-tui-"));
+    const rendered = render(
+      React.createElement(AgentTui, {
+        config: {
+          workspacePath,
+          provider: "deepseek",
+          model: "deepseek-reasoner",
+          permissionPolicy: { mode: "readonly" }
+        }
+      })
+    );
+
+    rendered.stdin.write("/status");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    rendered.stdin.write("\r");
+
+    await waitForFrame(rendered.lastFrame, "status: rpc | deepseek/deepseek-reasoner | readonly");
+  });
+
   it("opens plan mode from /plan without sending it to the model", async () => {
     const send = vi.fn(async function* () {});
     const rendered = render(

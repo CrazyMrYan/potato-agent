@@ -8,6 +8,8 @@ export type {
   AgentVerificationConfig,
   ResolvedAgentConfig
 } from "./config/AgentConfig.js";
+export { ConfigValidator } from "./config/ConfigValidator.js";
+export type { ConfigIssue, ConfigValidationResult, ConfigValidatorDependencies } from "./config/ConfigValidator.js";
 export {
   DEFAULT_AGENT_PERMISSION_POLICY,
   DEFAULT_SYSTEM_PROMPT,
