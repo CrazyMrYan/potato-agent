@@ -726,6 +726,56 @@ describe("AgentTui render", () => {
     expect(frame).not.toContain("UNKNOWN_ERROR");
   });
 
+  it("cancels a running task with /cancel and shows the cancelled state", async () => {
+    const workspacePath = await mkdtemp(join(tmpdir(), "coding-agent-tui-"));
+    let releaseFinish!: () => void;
+    const finishBlocked = new Promise<void>((resolve) => {
+      releaseFinish = resolve;
+    });
+    const stop = vi.fn(async () => {});
+    const cancelCurrentTask = vi.fn(async () => {
+      releaseFinish();
+    });
+    let sendStarted = false;
+    const rendered = render(
+      React.createElement(AgentTui, {
+        config: {
+          workspacePath,
+          provider: "deepseek",
+          model: "deepseek-reasoner"
+        },
+        createSession: () => ({
+          async start() {},
+          stop,
+          cancelCurrentTask,
+          async *send() {
+            sendStarted = true;
+            yield { type: "step.started" as const, taskId: "task_1", title: "working" };
+            await finishBlocked;
+            yield { type: "task.failed" as const, taskId: "task_1", error: { code: "TASK_CANCELLED" as const, message: "Task cancelled by user." } };
+          },
+          async approve() {}
+        })
+      })
+    );
+
+    rendered.stdin.write("long task");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    rendered.stdin.write("\r");
+    await waitForFrame(rendered.lastFrame, "状态：运行中");
+    await waitForCondition(() => sendStarted, "session send to start");
+
+    for (const char of "/cancel") {
+      rendered.stdin.write(char);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    rendered.stdin.write("\r");
+
+    await waitForFrame(rendered.lastFrame, "任务已取消");
+    expect(cancelCurrentTask).toHaveBeenCalledOnce();
+    expect(stop).not.toHaveBeenCalled();
+  });
+
   it("opens plan mode from /plan without sending it to the model", async () => {
     const send = vi.fn(async function* () {});
     const rendered = render(

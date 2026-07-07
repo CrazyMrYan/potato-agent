@@ -158,6 +158,9 @@ export class EventStreamRenderer {
       case "task.finished":
         return this.renderTaskFinished(event.summary);
       case "task.failed":
+        if (event.error.code === "TASK_CANCELLED") {
+          return { kind: "warning", text: this.yellow("任务已取消。") };
+        }
         if (isNothingToCompactFailure(event.taskId, event.error.message)) {
           return { kind: "muted", text: this.dim(`context compact skipped: ${normalizeNothingToCompactMessage(event.error.message)}`) };
         }

@@ -144,6 +144,18 @@ describe("EventStreamRenderer", () => {
     ).toBe("context compact skipped: Nothing to compact (session too small).");
   });
 
+  it("renders task cancellation as a user-facing cancelled state", () => {
+    const renderer = new EventStreamRenderer({ colors: false });
+
+    expect(
+      renderer.render({
+        type: "task.failed",
+        taskId: "task_1",
+        error: { code: "TASK_CANCELLED", message: "Task cancelled by user." }
+      })
+    ).toBe("任务已取消。");
+  });
+
   it("renders todo updates and prompt cache hits in Chinese", () => {
     const renderer = new EventStreamRenderer({ colors: false });
 
