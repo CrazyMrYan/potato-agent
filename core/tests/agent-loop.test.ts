@@ -4,6 +4,7 @@ import { AgentLoop } from "../src/loop/AgentLoop.js";
 import type { DiffService } from "../src/diff/DiffService.js";
 import type { PiAdapter } from "../src/pi/PiAdapter.js";
 import type { TraceEntry, TraceStore } from "../src/trace/TraceStore.js";
+import type { VerificationRunner } from "../src/verification/VerificationRunner.js";
 
 describe("AgentLoop", () => {
   it("estimates tokens with a tokenizer instead of character division", async () => {
@@ -81,6 +82,31 @@ describe("AgentLoop", () => {
     );
     expect(traceStore.entries.map((entry) => entry.kind)).toContain("context.budget");
     expect(traceStore.entries.map((entry) => entry.kind)).toContain("context.compacted");
+  });
+
+  it("runs verification after diff and before task.finished", async () => {
+    const loop = new AgentLoop(new StaticAdapter(), {
+      diffService: new StaticDiffService({ files: [{ path: "src/a.ts", status: "modified", diff: "patch" }] }),
+      verification: { enabled: true, command: "pnpm test" },
+      verificationRunner: {
+        detect: async () => undefined,
+        run: async () => ({ command: "pnpm test", exitCode: 0, output: "pass" })
+      } as VerificationRunner
+    });
+    const events: AgentEvent[] = [];
+
+    for await (const event of loop.run(input())) {
+      events.push(event);
+    }
+
+    expect(events.map((event) => event.type)).toEqual([
+      "task.started",
+      "step.started",
+      "diff.produced",
+      "verification.started",
+      "verification.finished",
+      "task.finished"
+    ]);
   });
 });
 

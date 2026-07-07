@@ -4,6 +4,7 @@ import { HeuristicContextBudgetManager } from "../src/context/ContextBudget.js";
 import type { PiSessionAdapter } from "../src/pi/PiSessionAdapter.js";
 import { AgentSessionFactory } from "../src/session/AgentSessionFactory.js";
 import type { TraceEntry, TraceStore } from "../src/trace/TraceStore.js";
+import type { VerificationRunner } from "../src/verification/VerificationRunner.js";
 
 class FakeSessionAdapter implements PiSessionAdapter {
   started = false;
@@ -351,6 +352,37 @@ describe("AgentSessionFactory", () => {
     expect(traceStore.entries).toContainEqual(
       expect.objectContaining({ kind: "task.failed", code: "TASK_CANCELLED", message: "Task cancelled by user." })
     );
+  });
+
+  it("runs verification for interactive session turns before task.finished is yielded", async () => {
+    const adapter = new FakeSessionAdapter();
+    const factory = new AgentSessionFactory({
+      createAdapter: () => adapter,
+      createVerificationRunner: () =>
+        ({
+          detect: async () => undefined,
+          run: async () => ({ command: "pnpm test", exitCode: 0, output: "pass" })
+        }) as VerificationRunner,
+      env: { DEEPSEEK_API_KEY: "test-key" }
+    });
+    const session = await factory.create({
+      provider: "deepseek",
+      model: "deepseek-reasoner",
+      workspacePath: "/repo",
+      verification: { enabled: true, command: "pnpm test" }
+    });
+
+    const events: AgentEvent[] = [];
+    for await (const event of session.send("change code")) {
+      events.push(event);
+    }
+
+    expect(events.map((event) => event.type)).toEqual([
+      "context.budget",
+      "verification.started",
+      "verification.finished",
+      "task.finished"
+    ]);
   });
 
   it("creates a standard runtime session when adapter is runtime", async () => {

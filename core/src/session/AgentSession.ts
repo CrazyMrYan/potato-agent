@@ -1,9 +1,11 @@
 import type { AgentEvent, RunTaskInput } from "@potato/protocol";
+import type { AgentVerificationConfig } from "../config/AgentConfig.js";
 import type { ContextBudgetManager } from "../context/ContextBudget.js";
 import type { PiSessionAdapter } from "../pi/PiSessionAdapter.js";
 import type { SubAgentConfig } from "../subagent/SubAgentConfig.js";
 import type { TraceStore } from "../trace/TraceStore.js";
 import { nowIso } from "../trace/TraceStore.js";
+import { runVerificationEvents, type VerificationRunner } from "../verification/VerificationRunner.js";
 
 export class AgentSession {
   private activeTaskId?: string;
@@ -14,7 +16,9 @@ export class AgentSession {
     private readonly traceStore?: TraceStore,
     private readonly workspacePath: string = process.cwd(),
     private readonly subAgent?: SubAgentConfig,
-    private readonly contextBudget?: ContextBudgetManager
+    private readonly contextBudget?: ContextBudgetManager,
+    private readonly verificationRunner?: Pick<VerificationRunner, "detect" | "run">,
+    private readonly verification?: AgentVerificationConfig
   ) {}
 
   start(): Promise<void> {
@@ -72,6 +76,15 @@ export class AgentSession {
           this.contextBudget?.record?.(input, event.summary);
           if (this.subAgent && this.subAgent.id !== "default" && this.subAgent.enabled !== false) {
             yield* this.emitSubAgentFinish(event.taskId, this.subAgent, event.summary);
+          }
+          for await (const verificationEvent of runVerificationEvents({
+            taskId: event.taskId,
+            workspacePath: this.workspacePath,
+            config: this.verification,
+            runner: this.verificationRunner
+          })) {
+            await this.trace({ timestamp: nowIso(), taskId: event.taskId, kind: "event", event: verificationEvent });
+            yield verificationEvent;
           }
           await this.trace({ timestamp: nowIso(), taskId: event.taskId, kind: "task.finished", summary: event.summary });
         }

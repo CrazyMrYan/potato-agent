@@ -1,10 +1,12 @@
 import type { AgentEvent, RunTaskInput, TaskFailedEvent, TaskFinishedEvent } from "@potato/protocol";
+import type { AgentVerificationConfig } from "../config/AgentConfig.js";
 import type { ContextBudgetManager } from "../context/ContextBudget.js";
 import type { DiffService } from "../diff/DiffService.js";
 import type { PiAdapter } from "../pi/PiAdapter.js";
 import type { SubAgentConfig } from "../subagent/SubAgentConfig.js";
 import type { RuntimeCapabilityReport, TraceStore } from "../trace/TraceStore.js";
 import { nowIso } from "../trace/TraceStore.js";
+import { runVerificationEvents, type VerificationRunner } from "../verification/VerificationRunner.js";
 
 export type AgentLoopDependencies = {
   traceStore?: TraceStore;
@@ -13,6 +15,8 @@ export type AgentLoopDependencies = {
   subAgent?: SubAgentConfig;
   contextBudget?: ContextBudgetManager;
   abortSignal?: AbortSignal;
+  verificationRunner?: Pick<VerificationRunner, "detect" | "run">;
+  verification?: AgentVerificationConfig;
 };
 
 export class AgentLoop {
@@ -108,6 +112,18 @@ export class AgentLoop {
           await this.traceEvent(diffEvent);
           yield diffEvent;
         }
+      }
+    }
+
+    if (finalEvent?.type === "task.finished") {
+      for await (const event of runVerificationEvents({
+        taskId: input.taskId,
+        workspacePath: input.workspacePath,
+        config: this.dependencies.verification,
+        runner: this.dependencies.verificationRunner
+      })) {
+        await this.traceEvent(event);
+        yield event;
       }
     }
 

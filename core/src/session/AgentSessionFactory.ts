@@ -6,6 +6,7 @@ import { RuntimeSessionAdapter, type RuntimeSessionAdapterDependencies } from ".
 import { SubAgentManager } from "../subagent/SubAgentManager.js";
 import { JsonlTraceStore } from "../trace/JsonlTraceStore.js";
 import type { TraceStore } from "../trace/TraceStore.js";
+import { VerificationRunner } from "../verification/VerificationRunner.js";
 import { AgentSession } from "./AgentSession.js";
 
 type AgentSessionFactoryDependencies = {
@@ -13,6 +14,7 @@ type AgentSessionFactoryDependencies = {
   createTraceStore?: (workspacePath: string) => TraceStore;
   createSubAgentManager?: () => Pick<SubAgentManager, "list">;
   createContextBudget?: () => ContextBudgetManager;
+  createVerificationRunner?: () => Pick<VerificationRunner, "detect" | "run">;
   runtime?: RuntimeSessionAdapterDependencies;
   env?: NodeJS.ProcessEnv;
 };
@@ -31,8 +33,9 @@ export class AgentSessionFactory {
     const subAgentManager = this.dependencies.createSubAgentManager?.() ?? new SubAgentManager();
     const activeSubAgent = (await subAgentManager.list()).find((agent) => agent.id === resolved.activeSubAgentId);
     const contextBudget = this.dependencies.createContextBudget?.() ?? new HeuristicContextBudgetManager();
+    const verificationRunner = this.dependencies.createVerificationRunner?.() ?? new VerificationRunner();
 
-    return new AgentSession(adapter, traceStore, workspacePath, activeSubAgent, contextBudget);
+    return new AgentSession(adapter, traceStore, workspacePath, activeSubAgent, contextBudget, verificationRunner, resolved.verification);
   }
 
   private createDefaultAdapter(config: AgentConfig): PiSessionAdapter {

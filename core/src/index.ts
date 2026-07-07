@@ -5,6 +5,7 @@ export type {
   AgentPermissionPolicy,
   AgentSkillConfig,
   AgentToolConfig,
+  AgentVerificationConfig,
   ResolvedAgentConfig
 } from "./config/AgentConfig.js";
 export {
@@ -52,3 +53,5 @@ export { resolvePiCliPath } from "./pi/resolvePiCliPath.js";
 export { JsonlTraceStore } from "./trace/JsonlTraceStore.js";
 export type { RuntimeCapabilityReport, TraceEntry, TraceStore, TraceSummary } from "./trace/TraceStore.js";
 export { nowIso } from "./trace/TraceStore.js";
+export { VerificationRunner, runVerificationEvents } from "./verification/VerificationRunner.js";
+export type { VerificationResult, VerificationRunnerDependencies } from "./verification/VerificationRunner.js";
