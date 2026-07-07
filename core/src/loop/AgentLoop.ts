@@ -12,6 +12,7 @@ export type AgentLoopDependencies = {
   runtimeCapability?: RuntimeCapabilityReport;
   subAgent?: SubAgentConfig;
   contextBudget?: ContextBudgetManager;
+  abortSignal?: AbortSignal;
 };
 
 export class AgentLoop {
@@ -63,7 +64,11 @@ export class AgentLoop {
     }
 
     let finalEvent: TaskFinishedEvent | TaskFailedEvent | undefined;
-    for await (const event of this.adapter.run(input)) {
+    for await (const event of this.adapter.run(input, { signal: this.dependencies.abortSignal })) {
+      if (this.dependencies.abortSignal?.aborted) {
+        yield* this.cancelled(input.taskId);
+        return;
+      }
       if (event.type === "task.finished" || event.type === "task.failed") {
         finalEvent = event;
         continue;
@@ -123,6 +128,17 @@ export class AgentLoop {
       }
       yield finalEvent;
     }
+  }
+
+  private async *cancelled(taskId: string): AsyncIterable<AgentEvent> {
+    const cancelled: TaskFailedEvent = {
+      type: "task.failed",
+      taskId,
+      error: { code: "TASK_CANCELLED", message: "Task cancelled by user." }
+    };
+    await this.traceEvent(cancelled);
+    await this.trace({ timestamp: nowIso(), taskId, kind: "task.failed", code: cancelled.error.code, message: cancelled.error.message });
+    yield cancelled;
   }
 
   private async traceEvent(event: AgentEvent): Promise<void> {

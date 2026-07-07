@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -14,6 +14,7 @@ class FakeRpcClient implements PiRpcClientLike {
   lastAssistantText: string | null = "完成";
   stderr = "";
   idleTimeouts: Array<number | undefined> = [];
+  stop = vi.fn(async () => {});
 
   async start(): Promise<void> {
     this.started = true;
@@ -47,8 +48,6 @@ class FakeRpcClient implements PiRpcClientLike {
   getStderr(): string {
     return this.stderr;
   }
-
-  async stop(): Promise<void> {}
 
   finish(): void {
     this.resolveIdle?.();
@@ -387,6 +386,49 @@ describe("PiRpcAdapter streaming", () => {
       }
     });
     expect(events).not.toContainEqual(expect.objectContaining({ type: "task.finished", summary: "Pi 运行完成，但没有返回最终文本。" }));
+  });
+
+  it("stops the RPC client and emits TASK_CANCELLED when aborted", async () => {
+    const client = new FakeRpcClient();
+    const adapter = new PiRpcAdapter(
+      {
+        provider: "deepseek",
+        model: "deepseek-reasoner",
+        workspacePath: "/repo",
+        apiKeyEnvName: "DEEPSEEK_API_KEY",
+        apiKey: "test-key",
+        timeoutMs: 1000,
+        permissionPolicy: { mode: "bypass" }
+      },
+      { createClient: () => client }
+    );
+    const input: RunTaskInput = {
+      taskId: "task_1",
+      workspacePath: "/repo",
+      prompt: "long task",
+      mode: "run",
+      approvalMode: "manual"
+    };
+    const controller = new AbortController();
+
+    const events: AgentEvent[] = [];
+    const consume = (async () => {
+      for await (const event of adapter.run(input, { signal: controller.signal })) {
+        events.push(event);
+      }
+    })();
+
+    await waitUntil(() => client.hasListeners() && client.promptStarted);
+    controller.abort();
+    client.finish();
+    await consume;
+
+    expect(client.stop).toHaveBeenCalled();
+    expect(events.at(-1)).toEqual({
+      type: "task.failed",
+      taskId: "task_1",
+      error: { code: "TASK_CANCELLED", message: "Task cancelled by user." }
+    });
   });
 });
 

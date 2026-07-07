@@ -3,7 +3,7 @@ import { RpcClient, type RpcClientOptions } from "@earendil-works/pi-coding-agen
 import { buildPiRpcArgs } from "../config/AgentConfig.js";
 import { PiEventMapper, type RawPiEvent } from "./PiEventMapper.js";
 import { buildPiProcessEnv } from "./buildPiProcessEnv.js";
-import type { PiAdapter, PiAdapterOptions } from "./PiAdapter.js";
+import type { PiAdapter, PiAdapterOptions, PiAdapterRunOptions } from "./PiAdapter.js";
 import { resolvePiCliPath } from "./resolvePiCliPath.js";
 
 export type PiRpcClientLike = {
@@ -26,7 +26,7 @@ export class PiRpcAdapter implements PiAdapter {
     private readonly dependencies: PiRpcAdapterDependencies = {}
   ) {}
 
-  async *run(input: RunTaskInput): AsyncIterable<AgentEvent> {
+  async *run(input: RunTaskInput, options: PiAdapterRunOptions = {}): AsyncIterable<AgentEvent> {
     const client = this.createClient({
       cliPath: this.resolveCliPath(),
       cwd: this.options.workspacePath,
@@ -35,8 +35,18 @@ export class PiRpcAdapter implements PiAdapter {
       model: this.options.model,
       args: buildPiRpcArgs(this.options)
     });
+    let aborted = options.signal?.aborted ?? false;
+    const abort = () => {
+      aborted = true;
+      void client.stop();
+    };
+    options.signal?.addEventListener("abort", abort, { once: true });
 
     try {
+      if (aborted) {
+        yield cancelledEvent(input.taskId);
+        return;
+      }
       yield {
         type: "step.started",
         taskId: input.taskId,
@@ -44,6 +54,10 @@ export class PiRpcAdapter implements PiAdapter {
       };
 
       await client.start();
+      if (aborted) {
+        yield cancelledEvent(input.taskId);
+        return;
+      }
       const stream = new AsyncEventQueue<AgentEvent>();
       const mapper = new PiEventMapper(input.taskId);
       let sawAssistantText = false;
@@ -60,6 +74,10 @@ export class PiRpcAdapter implements PiAdapter {
         try {
           await client.prompt(input.prompt);
           await client.waitForIdle();
+          if (aborted) {
+            stream.push(cancelledEvent(input.taskId));
+            return;
+          }
           const summary = await resolveFinalSummary(client, sawAssistantText);
           if (summary.type === "failed") {
             stream.push(summary.event(input.taskId));
@@ -67,7 +85,7 @@ export class PiRpcAdapter implements PiAdapter {
           }
           stream.push({ type: "task.finished", taskId: input.taskId, summary: summary.summary });
         } catch (error) {
-          stream.push(this.toFailedEvent(input.taskId, client, error));
+          stream.push(aborted ? cancelledEvent(input.taskId) : this.toFailedEvent(input.taskId, client, error));
         } finally {
           unsubscribe();
           stream.close();
@@ -80,8 +98,9 @@ export class PiRpcAdapter implements PiAdapter {
 
       await task;
     } catch (error) {
-      yield this.toFailedEvent(input.taskId, client, error);
+      yield aborted ? cancelledEvent(input.taskId) : this.toFailedEvent(input.taskId, client, error);
     } finally {
+      options.signal?.removeEventListener("abort", abort);
       await client.stop();
     }
   }
@@ -112,6 +131,17 @@ export class PiRpcAdapter implements PiAdapter {
     }
     return String(error);
   }
+}
+
+function cancelledEvent(taskId: string): AgentEvent {
+  return {
+    type: "task.failed",
+    taskId,
+    error: {
+      code: "TASK_CANCELLED",
+      message: "Task cancelled by user."
+    }
+  };
 }
 
 function resolveFinalSummary(

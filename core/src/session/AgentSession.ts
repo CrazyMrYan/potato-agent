@@ -6,6 +6,9 @@ import type { TraceStore } from "../trace/TraceStore.js";
 import { nowIso } from "../trace/TraceStore.js";
 
 export class AgentSession {
+  private activeTaskId?: string;
+  private readonly cancelledTaskIds = new Set<string>();
+
   constructor(
     private readonly adapter: PiSessionAdapter,
     private readonly traceStore?: TraceStore,
@@ -22,6 +25,18 @@ export class AgentSession {
     return this.adapter.stop();
   }
 
+  async cancelCurrentTask(): Promise<void> {
+    const taskId = this.activeTaskId;
+    if (taskId) {
+      this.cancelledTaskIds.add(taskId);
+    }
+    if (this.adapter.cancelCurrentTask) {
+      await this.adapter.cancelCurrentTask();
+      return;
+    }
+    await this.adapter.stop();
+  }
+
   adapterName(): "rpc" | "runtime" | "sdk" | "unknown" {
     return this.adapter.name ?? "unknown";
   }
@@ -29,54 +44,84 @@ export class AgentSession {
   async *send(prompt: string): AsyncIterable<AgentEvent> {
     let input: RunTaskInput | undefined;
 
-    for await (const event of this.adapter.send(prompt)) {
-      if (!input) {
-        input = {
-          taskId: event.taskId,
-          workspacePath: this.workspacePath,
-          prompt,
-          mode: "run",
-          approvalMode: "manual"
-        };
-        await this.trace({ timestamp: nowIso(), taskId: event.taskId, kind: "task.input", input });
-        yield* this.prepareContext(input);
-        if (this.subAgent && this.subAgent.id !== "default" && this.subAgent.enabled !== false) {
-          yield* this.emitSubAgentStart(event.taskId, this.subAgent);
-        }
-      }
-
-      await this.trace({ timestamp: nowIso(), taskId: event.taskId, kind: "event", event });
-      if (event.type === "task.finished") {
-        this.contextBudget?.record?.(input, event.summary);
-        if (this.subAgent && this.subAgent.id !== "default" && this.subAgent.enabled !== false) {
-          yield* this.emitSubAgentFinish(event.taskId, this.subAgent, event.summary);
-        }
-        await this.trace({ timestamp: nowIso(), taskId: event.taskId, kind: "task.finished", summary: event.summary });
-      }
-      if (event.type === "task.failed") {
-        this.contextBudget?.record?.(input, event.error.message);
-        if (this.subAgent && this.subAgent.id !== "default" && this.subAgent.enabled !== false) {
-          const failed: AgentEvent = {
-            type: "subagent.failed",
+    try {
+      for await (const event of this.adapter.send(prompt)) {
+        if (!input) {
+          input = {
             taskId: event.taskId,
-            subAgentId: this.subAgent.id,
-            name: this.subAgent.name,
-            error: event.error
+            workspacePath: this.workspacePath,
+            prompt,
+            mode: "run",
+            approvalMode: "manual"
           };
-          await this.trace({ timestamp: nowIso(), taskId: event.taskId, kind: "event", event: failed });
-          yield failed;
+          this.activeTaskId = event.taskId;
+          await this.trace({ timestamp: nowIso(), taskId: event.taskId, kind: "task.input", input });
+          yield* this.prepareContext(input);
+          if (this.subAgent && this.subAgent.id !== "default" && this.subAgent.enabled !== false) {
+            yield* this.emitSubAgentStart(event.taskId, this.subAgent);
+          }
         }
-        await this.trace({
-          timestamp: nowIso(),
-          taskId: event.taskId,
-          kind: "task.failed",
-          code: event.error.code,
-          message: event.error.message,
-          cause: event.error.cause
-        });
+
+        if (this.cancelledTaskIds.has(event.taskId)) {
+          yield* this.emitCancelled(event.taskId);
+          return;
+        }
+
+        await this.trace({ timestamp: nowIso(), taskId: event.taskId, kind: "event", event });
+        if (event.type === "task.finished") {
+          this.contextBudget?.record?.(input, event.summary);
+          if (this.subAgent && this.subAgent.id !== "default" && this.subAgent.enabled !== false) {
+            yield* this.emitSubAgentFinish(event.taskId, this.subAgent, event.summary);
+          }
+          await this.trace({ timestamp: nowIso(), taskId: event.taskId, kind: "task.finished", summary: event.summary });
+        }
+        if (event.type === "task.failed") {
+          this.contextBudget?.record?.(input, event.error.message);
+          if (this.subAgent && this.subAgent.id !== "default" && this.subAgent.enabled !== false) {
+            const failed: AgentEvent = {
+              type: "subagent.failed",
+              taskId: event.taskId,
+              subAgentId: this.subAgent.id,
+              name: this.subAgent.name,
+              error: event.error
+            };
+            await this.trace({ timestamp: nowIso(), taskId: event.taskId, kind: "event", event: failed });
+            yield failed;
+          }
+          await this.trace({
+            timestamp: nowIso(),
+            taskId: event.taskId,
+            kind: "task.failed",
+            code: event.error.code,
+            message: event.error.message,
+            cause: event.error.cause
+          });
+        }
+        yield event;
       }
-      yield event;
+    } catch (error) {
+      if (this.activeTaskId && this.cancelledTaskIds.has(this.activeTaskId)) {
+        yield* this.emitCancelled(this.activeTaskId);
+        return;
+      }
+      throw error;
+    } finally {
+      if (this.activeTaskId) {
+        this.cancelledTaskIds.delete(this.activeTaskId);
+      }
+      this.activeTaskId = undefined;
     }
+  }
+
+  private async *emitCancelled(taskId: string): AsyncIterable<AgentEvent> {
+    const event: AgentEvent = {
+      type: "task.failed",
+      taskId,
+      error: { code: "TASK_CANCELLED", message: "Task cancelled by user." }
+    };
+    await this.trace({ timestamp: nowIso(), taskId, kind: "event", event });
+    await this.trace({ timestamp: nowIso(), taskId, kind: "task.failed", code: event.error.code, message: event.error.message });
+    yield event;
   }
 
   private async *emitSubAgentStart(taskId: string, subAgent: SubAgentConfig): AsyncIterable<AgentEvent> {

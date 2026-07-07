@@ -1,8 +1,8 @@
 import type { AgentEvent, RunTaskInput } from "@potato/protocol";
-import type { PiAdapter } from "./PiAdapter.js";
+import type { PiAdapter, PiAdapterRunOptions } from "./PiAdapter.js";
 
 export class FakePiAdapter implements PiAdapter {
-  async *run(input: RunTaskInput): AsyncIterable<AgentEvent> {
+  async *run(input: RunTaskInput, _options: PiAdapterRunOptions = {}): AsyncIterable<AgentEvent> {
     yield { type: "step.started", taskId: input.taskId, title: "创建任务上下文" };
     yield { type: "tool.started", taskId: input.taskId, tool: "git.status", summary: "读取 Git 状态" };
     yield { type: "tool.finished", taskId: input.taskId, tool: "git.status", success: true, output: "工作区干净" };

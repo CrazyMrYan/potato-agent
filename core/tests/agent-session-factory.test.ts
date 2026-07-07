@@ -304,6 +304,55 @@ describe("AgentSessionFactory", () => {
     expect(adapter.stopped).toBe(true);
   });
 
+  it("cancels the active session task, stops the adapter, and records TASK_CANCELLED", async () => {
+    const adapter = new FakeSessionAdapter();
+    const traceStore = new MemoryTraceStore();
+    let releaseSend!: () => void;
+    const sendBlocked = new Promise<void>((resolve) => {
+      releaseSend = resolve;
+    });
+    adapter.send = async function* (prompt: string) {
+      this.prompts.push(prompt);
+      yield { type: "step.started" as const, taskId: "turn_1", title: "working" };
+      await sendBlocked;
+      yield { type: "task.finished" as const, taskId: "turn_1", summary: "should not finish" };
+    };
+
+    const factory = new AgentSessionFactory({
+      createAdapter: () => adapter,
+      createTraceStore: () => traceStore,
+      env: { DEEPSEEK_API_KEY: "test-key" }
+    });
+    const session = await factory.create({
+      provider: "deepseek",
+      model: "deepseek-reasoner",
+      workspacePath: "/repo"
+    });
+
+    const events: AgentEvent[] = [];
+    const consume = (async () => {
+      for await (const event of session.send("long task")) {
+        events.push(event);
+        if (event.type === "step.started") {
+          await session.cancelCurrentTask();
+          releaseSend();
+        }
+      }
+    })();
+
+    await consume;
+
+    expect(adapter.stopped).toBe(true);
+    expect(events.at(-1)).toEqual({
+      type: "task.failed",
+      taskId: "turn_1",
+      error: { code: "TASK_CANCELLED", message: "Task cancelled by user." }
+    });
+    expect(traceStore.entries).toContainEqual(
+      expect.objectContaining({ kind: "task.failed", code: "TASK_CANCELLED", message: "Task cancelled by user." })
+    );
+  });
+
   it("creates a standard runtime session when adapter is runtime", async () => {
     const factory = new AgentSessionFactory({
       env: { OPENAI_API_KEY: "test-key" },

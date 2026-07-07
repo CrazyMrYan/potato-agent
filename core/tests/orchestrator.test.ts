@@ -55,6 +55,31 @@ describe("AgentOrchestrator", () => {
     });
     expect(events.at(-1)?.type).toBe("task.finished");
   });
+
+  it("cancels an active one-shot task by task id", async () => {
+    const adapter = new WaitingAdapter();
+    const orchestrator = new AgentOrchestrator(adapter);
+    const events: AgentEvent[] = [];
+
+    const consume = (async () => {
+      for await (const event of orchestrator.run(input())) {
+        events.push(event);
+        if (event.type === "step.started") {
+          await orchestrator.cancel("task_1");
+          adapter.release();
+        }
+      }
+    })();
+
+    await consume;
+
+    expect(adapter.signal?.aborted).toBe(true);
+    expect(events.at(-1)).toEqual({
+      type: "task.failed",
+      taskId: "task_1",
+      error: { code: "TASK_CANCELLED", message: "Task cancelled by user." }
+    });
+  });
 });
 
 function input(): RunTaskInput {
@@ -88,5 +113,29 @@ class StaticDiffService implements DiffService {
 
   async getChangeSet(): Promise<ChangeSet> {
     return this.changeSet;
+  }
+}
+
+class WaitingAdapter extends FakePiAdapter {
+  signal?: AbortSignal;
+  private readonly blocked: Promise<void>;
+  private resolve!: () => void;
+
+  constructor() {
+    super();
+    this.blocked = new Promise<void>((resolve) => {
+      this.resolve = resolve;
+    });
+  }
+
+  override async *run(task: RunTaskInput, options: { signal?: AbortSignal } = {}): AsyncIterable<AgentEvent> {
+    this.signal = options.signal;
+    yield { type: "step.started", taskId: task.taskId, title: "waiting" };
+    await this.blocked;
+    yield { type: "task.finished", taskId: task.taskId, summary: "should not finish" };
+  }
+
+  release(): void {
+    this.resolve();
   }
 }
