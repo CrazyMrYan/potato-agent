@@ -94,6 +94,10 @@ export function formatTraceEntry(entry: TraceEntry): string {
       return `${entry.timestamp} context.budget ${event.usedTokens}/${event.maxTokens} ${Math.round(event.ratio * 100)}%`;
     case "context.compacted":
       return `${entry.timestamp} context.compacted ${event.originalTokens}->${event.compactedTokens}`;
+    case "todo.updated":
+      return `${entry.timestamp} todo.updated ${event.todos.length} items`;
+    case "prompt.cache":
+      return `${entry.timestamp} prompt.cache cached=${event.cachedTokens}${event.inputTokens !== undefined ? ` input=${event.inputTokens}` : ""}${event.cacheWriteTokens !== undefined ? ` write=${event.cacheWriteTokens}` : ""}`;
     case "diff.produced":
       return `${entry.timestamp} diff.produced ${event.changeSet.files.length} files`;
     case "task.started":

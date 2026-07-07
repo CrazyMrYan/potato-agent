@@ -203,6 +203,78 @@ describe("PiRpcAdapter streaming", () => {
     expect(events).toContainEqual(expect.objectContaining({ type: "tool.started", tool: "bash", summary: "执行命令：rg --files" }));
   });
 
+  it("maps Potato todo tool results and provider cache usage into structured events", async () => {
+    const client = new FakeRpcClient();
+    const adapter = new PiRpcAdapter(
+      {
+        provider: "deepseek",
+        model: "deepseek-reasoner",
+        workspacePath: "/repo",
+        apiKeyEnvName: "DEEPSEEK_API_KEY",
+        apiKey: "test-key",
+        timeoutMs: 1000,
+        permissionPolicy: { mode: "bypass" }
+      },
+      { createClient: () => client }
+    );
+    const input: RunTaskInput = {
+      taskId: "task_1",
+      workspacePath: "/repo",
+      prompt: "实现 todo",
+      mode: "run",
+      approvalMode: "manual"
+    };
+
+    const events: AgentEvent[] = [];
+    const consume = (async () => {
+      for await (const event of adapter.run(input)) {
+        events.push(event);
+      }
+    })();
+
+    await waitUntil(() => client.hasListeners() && client.promptStarted);
+    client.emit({
+      type: "tool_execution_end",
+      toolName: "potato_todo_write",
+      result: {
+        content: [{ type: "text", text: "Todo list updated." }],
+        details: {
+          kind: "potato.todo",
+          todos: [
+            { content: "写失败测试", status: "completed", activeForm: "正在写失败测试" },
+            { content: "实现 Pi extension", status: "in_progress", activeForm: "正在实现 Pi extension" }
+          ]
+        }
+      }
+    });
+    client.emit({
+      type: "usage",
+      usage: {
+        prompt_tokens: 1200,
+        prompt_tokens_details: {
+          cached_tokens: 512
+        }
+      }
+    });
+    client.finish();
+    await consume;
+
+    expect(events).toContainEqual({
+      type: "todo.updated",
+      taskId: "task_1",
+      todos: [
+        { content: "写失败测试", status: "completed", activeForm: "正在写失败测试" },
+        { content: "实现 Pi extension", status: "in_progress", activeForm: "正在实现 Pi extension" }
+      ]
+    });
+    expect(events).toContainEqual({
+      type: "prompt.cache",
+      taskId: "task_1",
+      cachedTokens: 512,
+      inputTokens: 1200
+    });
+  });
+
   it("surfaces stderr as a failed task when Pi becomes idle without assistant output", async () => {
     const client = new FakeRpcClient();
     client.lastAssistantText = null;

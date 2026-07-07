@@ -174,6 +174,25 @@ describe("Agent runtime config", () => {
     expect(mcpSource).toContain("${server.name}__${mcpTool.name}");
   });
 
+  it("injects the Potato todo tool and stable system prompt guidance into Pi RPC", () => {
+    const workspace = mkdtempSync(join(tmpdir(), "potato-pi-todo-"));
+    const args = buildPiRpcArgs({
+      workspacePath: workspace,
+      permissionPolicy: { mode: "bypass" },
+      systemPrompt: "base prompt",
+      appendSystemPrompt: ["turn-specific instruction"]
+    });
+    const extensionPaths = extensionArgs(args);
+    const todoExtension = extensionPaths.find((path) => path.endsWith("potato-todo.ts"));
+
+    expect(todoExtension).toBeTruthy();
+    expect(readFileSync(todoExtension as string, "utf8")).toContain("potato_todo_write");
+    expect(args).toContain("--append-system-prompt");
+    expect(args[args.indexOf("--append-system-prompt") + 1]).toBe("turn-specific instruction");
+    expect(args[1]).toContain("Potato todo tool:");
+    expect(args[1]).toContain("Use potato_todo_write for multi-step work");
+  });
+
   it("disables Pi skill auto-discovery when runtime skills are managed explicitly", () => {
     const args = buildPiRpcArgs({
         skills: [

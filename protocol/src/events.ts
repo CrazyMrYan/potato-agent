@@ -60,6 +60,28 @@ export type ContextCompactedEvent = {
   compactedTokens: number;
 };
 
+export type TodoStatus = "pending" | "in_progress" | "completed";
+
+export type TodoItem = {
+  content: string;
+  status: TodoStatus;
+  activeForm?: string;
+};
+
+export type TodoUpdatedEvent = {
+  type: "todo.updated";
+  taskId: string;
+  todos: TodoItem[];
+};
+
+export type PromptCacheEvent = {
+  type: "prompt.cache";
+  taskId: string;
+  cachedTokens: number;
+  cacheWriteTokens?: number;
+  inputTokens?: number;
+};
+
 export type SubAgentSelectedEvent = {
   type: "subagent.selected";
   taskId: string;
@@ -132,6 +154,8 @@ export type AgentEvent =
   | ApprovalRequestedEvent
   | ContextBudgetEvent
   | ContextCompactedEvent
+  | TodoUpdatedEvent
+  | PromptCacheEvent
   | SubAgentSelectedEvent
   | SubAgentStartedEvent
   | SubAgentFinishedEvent

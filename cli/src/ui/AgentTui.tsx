@@ -107,6 +107,8 @@ export function AgentTui(props: AgentTuiProps): React.ReactElement {
   const [skillCandidates, setSkillCandidates] = useState<string[]>([]);
   const [skillCandidatesLoading, setSkillCandidatesLoading] = useState(false);
   const [mode, setMode] = useState<Mode>("chat");
+  const [planModeActive, setPlanModeActive] = useState(false);
+  const [loadingTick, setLoadingTick] = useState(0);
   const [selectedCompletion, setSelectedCompletion] = useState(0);
   const [selectedProvider, setSelectedProvider] = useState(() => {
     const index = providerOptions.findIndex((provider) => provider === props.config.provider);
@@ -127,7 +129,6 @@ export function AgentTui(props: AgentTuiProps): React.ReactElement {
     tool: props.config.ui?.details?.tool ?? false,
     diff: props.config.ui?.details?.diff ?? false
   }));
-  const [activity, setActivity] = useState<"idle" | "thinking" | "responding" | "tool">("idle");
   const [contextStatus, setContextStatus] = useState<string | undefined>();
   const [promptHistory, setPromptHistory] = useState<string[]>([]);
   const [historyIndex, setHistoryIndex] = useState<number | undefined>();
@@ -199,8 +200,8 @@ export function AgentTui(props: AgentTuiProps): React.ReactElement {
       setMode("skill-completion");
       return;
     }
-    setMode((current) => (current === "command" || current === "file-completion" || current === "skill-completion" ? "chat" : current));
-  }, []);
+    setMode((current) => (current === "command" || current === "file-completion" || current === "skill-completion" ? (planModeActive ? "plan-mode" : "chat") : current));
+  }, [planModeActive]);
 
   const stopActiveSession = useCallback(async () => {
     if (!sessionRef.current) {
@@ -374,9 +375,9 @@ export function AgentTui(props: AgentTuiProps): React.ReactElement {
   }, [appendEvent, appendEvents, buildRuntimeConfig, props]);
 
   const openPlanMode = useCallback(() => {
+    setPlanModeActive(true);
     setMode("plan-mode");
-    appendEvent({ kind: "muted", text: "PLAN MODE：先产出计划并等待确认，不直接修改文件。" });
-  }, [appendEvent]);
+  }, []);
 
   const setDetailsExpanded = useCallback(
     async (details: { thinking: boolean; tool: boolean; diff: boolean }) => {
@@ -389,15 +390,14 @@ export function AgentTui(props: AgentTuiProps): React.ReactElement {
   );
 
   const sendPrompt = useCallback(
-    async (prompt: string) => {
+    async (prompt: string, displayPrompt = prompt) => {
       if (busy) {
         appendEvent({ kind: "warning", text: "当前还有任务在运行，请等待完成。" });
         return;
       }
 
       setBusy(true);
-      appendEvent({ kind: "user", text: prompt });
-      appendEvent({ kind: "muted", text: "agent running" });
+      appendEvent({ kind: "user", text: displayPrompt });
 
       try {
         const runtimeConfig = applyInlineSkillMentions(await buildRuntimeConfig(), prompt);
@@ -414,7 +414,6 @@ export function AgentTui(props: AgentTuiProps): React.ReactElement {
 
         const renderer = new EventStreamRenderer({ colors: false, streamText: false, streamDetails: expandedKinds.thinking, collectThinking: true });
         for await (const event of activeSession.send(prompt)) {
-          setActivity(activityForEvent(event));
           if (event.type === "approval.requested") {
             setPendingApproval(event.request);
             setMode("approval");
@@ -426,8 +425,6 @@ export function AgentTui(props: AgentTuiProps): React.ReactElement {
         appendEvent({ kind: "error", text: `Agent 会话失败：${error instanceof Error ? error.message : String(error)}` });
       } finally {
         setBusy(false);
-        setActivity("idle");
-        appendEvent({ kind: "muted", text: "agent idle" });
       }
     },
     [appendEvent, appendEvents, buildRuntimeConfig, busy, expandedKinds.thinking, props]
@@ -560,9 +557,20 @@ export function AgentTui(props: AgentTuiProps): React.ReactElement {
       }
 
       setPromptHistory((current) => [...current.filter((item) => item !== prompt), prompt].slice(-50));
+      if (planModeActive) {
+        if (isPlanExecutionConfirmation(prompt)) {
+          setPlanModeActive(false);
+          setMode("chat");
+          await sendPrompt(formatPlanExecutionPrompt(prompt), prompt);
+          return;
+        }
+        setMode("plan-mode");
+        await sendPrompt(formatPlanPrompt(prompt), prompt);
+        return;
+      }
       await sendPrompt(prompt);
     },
-    [app, appendEvent, compactContext, enterModelProviderMode, expandedKinds, openAgentMenu, openMcpMenu, openPermissionMode, openPlanMode, openSkillList, sendPrompt, setDetailsExpanded, showDiff, showTrace, workspacePath]
+    [app, appendEvent, compactContext, enterModelProviderMode, expandedKinds, openAgentMenu, openMcpMenu, openPermissionMode, openPlanMode, openSkillList, planModeActive, sendPrompt, setDetailsExpanded, showDiff, showTrace, workspacePath]
   );
 
   useEffect(() => {
@@ -570,6 +578,19 @@ export function AgentTui(props: AgentTuiProps): React.ReactElement {
       void sessionRef.current?.stop();
     };
   }, []);
+
+  useEffect(() => {
+    if (!busy) {
+      setLoadingTick(0);
+      return;
+    }
+
+    const timer = setInterval(() => {
+      setLoadingTick((value) => (value + 1) % 3);
+    }, 250);
+
+    return () => clearInterval(timer);
+  }, [busy]);
 
   useEffect(() => {
     if (completionContext?.type !== "file") {
@@ -634,23 +655,25 @@ export function AgentTui(props: AgentTuiProps): React.ReactElement {
       return;
     }
 
-    if (mode === "chat" && key.ctrl && input === "t") {
+    const promptMode = mode === "chat" || mode === "plan-mode";
+
+    if (promptMode && key.ctrl && input === "t") {
       void setDetailsExpanded({ ...expandedKinds, thinking: !expandedKinds.thinking });
       return;
     }
 
-    if (mode === "chat" && (isDetailToggleKey(input, key) || (key.ctrl && input === "o"))) {
+    if (promptMode && (isDetailToggleKey(input, key) || (key.ctrl && input === "o"))) {
       const expanded = !(expandedKinds.tool && expandedKinds.thinking && expandedKinds.diff);
       void setDetailsExpanded({ thinking: expanded, tool: expanded, diff: expanded });
       return;
     }
 
-    if (mode === "chat" && key.ctrl && input === "d") {
+    if (promptMode && key.ctrl && input === "d") {
       void setDetailsExpanded({ ...expandedKinds, diff: !expandedKinds.diff });
       return;
     }
 
-    if (mode === "chat" && key.upArrow && (editor.text.length === 0 || historyIndex !== undefined)) {
+    if (promptMode && key.upArrow && (editor.text.length === 0 || historyIndex !== undefined)) {
       const nextIndex = historyIndex === undefined ? promptHistory.length - 1 : Math.max(historyIndex - 1, 0);
       const prompt = promptHistory[nextIndex];
       if (prompt) {
@@ -660,7 +683,7 @@ export function AgentTui(props: AgentTuiProps): React.ReactElement {
       return;
     }
 
-    if (mode === "chat" && key.downArrow && (editor.text.length === 0 || historyIndex !== undefined)) {
+    if (promptMode && key.downArrow && (editor.text.length === 0 || historyIndex !== undefined)) {
       if (historyIndex !== undefined) {
         const nextIndex = historyIndex + 1;
         if (nextIndex < promptHistory.length) {
@@ -674,7 +697,7 @@ export function AgentTui(props: AgentTuiProps): React.ReactElement {
       return;
     }
 
-    if (mode === "chat" && editor.text === "/model" && (key.return || isReturnInput(input))) {
+    if (promptMode && editor.text === "/model" && (key.return || isReturnInput(input))) {
       updateEditor(createPromptEditor());
       enterModelProviderMode();
       return;
@@ -799,7 +822,7 @@ export function AgentTui(props: AgentTuiProps): React.ReactElement {
       return;
     }
 
-    if (mode !== "chat") {
+    if (mode !== "chat" && mode !== "plan-mode") {
       handleSecondaryInput({
         input,
         key,
@@ -901,17 +924,18 @@ export function AgentTui(props: AgentTuiProps): React.ReactElement {
           <SkillList mode={mode} skills={skillItems} selectedSkill={selectedSkill} skillInstallInput={skillInstallInput} />
           <McpMenu mode={mode} servers={config.mcpServers ?? []} results={mcpResults} />
           <AgentMenu mode={mode} agents={subAgentItems} selectedSubAgent={selectedSubAgent} activeSubAgentId={config.activeSubAgentId ?? "default"} />
-          <PlanMode mode={mode} />
           <ApprovalPrompt mode={mode} request={pendingApproval} />
         </Box>
 
-        <Box paddingX={1}>
+        <Box paddingX={1} justifyContent="space-between">
           <Text dimColor>{contextStatus ?? "context waiting for first turn"}</Text>
+          <Text color={busy ? "yellow" : "gray"}>{formatAgentRunStatus(busy, loadingTick)}</Text>
         </Box>
 
         <Box marginTop={1} borderStyle="single" borderColor={mode === "chat" ? "gray" : "cyan"} paddingX={1}>
           {isPromptEditingMode(mode) ? <PromptLine editor={editor} /> : <Text color="cyan">{secondaryPrompt(mode, skillInstallInput)}</Text>}
         </Box>
+        <PlanMode active={planModeActive} />
       </Box>
     </>
   );
@@ -1289,24 +1313,8 @@ function isDiffEventKind(kind: RenderedAgentEvent["kind"]): boolean {
   return kind === "diff" || kind === "diffFile" || kind === "diffHunk" || kind === "diffAdd" || kind === "diffRemove" || kind === "diffContext";
 }
 
-function activityForEvent(event: { type: string }): "idle" | "thinking" | "responding" | "tool" {
-  if (event.type === "assistant.delta") {
-    return (event as { channel?: string }).channel === "thinking" ? "thinking" : "responding";
-  }
-  if (event.type === "tool.started" || event.type === "tool.finished" || event.type === "approval.requested") {
-    return "tool";
-  }
-  if (event.type === "step.started" || event.type === "context.budget") {
-    return "thinking";
-  }
-  return "idle";
-}
-
-function activityLabel(activity: "idle" | "thinking" | "responding" | "tool"): string {
-  if (activity === "thinking") return "thinking";
-  if (activity === "responding") return "responding";
-  if (activity === "tool") return "tool";
-  return "running";
+function formatAgentRunStatus(busy: boolean, loadingTick: number): string {
+  return busy ? `状态：运行中${".".repeat((loadingTick % 3) + 1)}` : "状态：空闲";
 }
 
 function diffLineEventKind(kind: RenderedDiffLine["kind"]): RenderedAgentEventKind {
@@ -1549,17 +1557,15 @@ function AgentMenu({
   );
 }
 
-function PlanMode({ mode }: { mode: Mode }): React.ReactElement | null {
-  if (mode !== "plan-mode") {
+function PlanMode({ active }: { active: boolean }): React.ReactElement | null {
+  if (!active) {
     return null;
   }
 
   return (
-    <>
+    <Box paddingX={1}>
       <Text dimColor>PLAN MODE</Text>
-      <Text>当前模式只用于规划：输入后续任务前请先确认计划，避免直接执行变更。</Text>
-      <Text dimColor>Enter 或 Esc 返回聊天</Text>
-    </>
+    </Box>
   );
 }
 
@@ -1666,6 +1672,36 @@ function secondaryPrompt(mode: Mode, skillInstallInput: string): string {
   return "";
 }
 
+function formatPlanPrompt(prompt: string): string {
+  return [
+    "当前处于计划模式。",
+    "请只产出或调整计划，不要修改文件或执行开发。",
+    "计划写完后请询问用户是否执行；如果用户需要调整，请继续根据反馈修改计划；只有用户明确确认执行后才能开始开发。",
+    "",
+    `用户请求：${prompt}`
+  ].join("\n");
+}
+
+function formatPlanExecutionPrompt(prompt: string): string {
+  return [
+    "用户已确认执行。",
+    "请基于上面的计划开始开发，完成实现后进行必要验证，并向用户汇报结果。",
+    "",
+    `用户确认：${prompt}`
+  ].join("\n");
+}
+
+function isPlanExecutionConfirmation(prompt: string): boolean {
+  const normalized = prompt.trim().replace(/\s+/g, "");
+  if (!normalized) {
+    return false;
+  }
+  if (/^(不要|先别|暂不|不用|别).*(执行|开发|实现)/.test(normalized)) {
+    return false;
+  }
+  return /^(执行|确认执行|可以执行|开始执行|开始开发|开始实现|按计划执行|按这个执行|就这样执行|同意执行)$/.test(normalized);
+}
+
 function formatModel(config: AgentConfig): string {
   return `${config.provider ?? "未配置"}/${config.model ?? "未配置"}`;
 }
@@ -1746,7 +1782,7 @@ function completionRank(value: string, query: string): number {
 }
 
 function isPromptEditingMode(mode: Mode): boolean {
-  return mode === "chat" || mode === "command" || mode === "file-completion" || mode === "skill-completion";
+  return mode === "chat" || mode === "plan-mode" || mode === "command" || mode === "file-completion" || mode === "skill-completion";
 }
 
 function isDetailToggleKey(input: string, key: Record<string, unknown>): boolean {

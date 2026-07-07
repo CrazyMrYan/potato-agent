@@ -157,7 +157,7 @@ describe("AgentTui render", () => {
     rendered.stdin.write("task");
     await new Promise((resolve) => setTimeout(resolve, 0));
     rendered.stdin.write("\r");
-    await waitForFrame(rendered.lastFrame, "agent running");
+    await waitForFrame(rendered.lastFrame, "状态：运行中");
     await waitForFrame(rendered.lastFrame, "Thinking collapsed");
     expect(rendered.lastFrame()).not.toContain("thinking before toggle");
 
@@ -168,7 +168,7 @@ describe("AgentTui render", () => {
 
     await waitForCondition(() => releaseFinish !== undefined, "session to reach finish gate");
     releaseFinish?.();
-    await waitForFrame(rendered.lastFrame, "agent idle");
+    await waitForFrame(rendered.lastFrame, "状态：空闲");
   });
 
   it("shows assistant text when the task finishes", async () => {
@@ -199,13 +199,13 @@ describe("AgentTui render", () => {
     rendered.stdin.write("task");
     await new Promise((resolve) => setTimeout(resolve, 0));
     rendered.stdin.write("\r");
-    await waitForFrame(rendered.lastFrame, "agent running");
+    await waitForFrame(rendered.lastFrame, "状态：运行中");
     expect(rendered.lastFrame()).not.toContain("streaming now");
 
     await waitForCondition(() => releaseFinish !== undefined, "session to reach finish gate");
     releaseFinish?.();
     await waitForFrame(rendered.lastFrame, "streaming now");
-    await waitForFrame(rendered.lastFrame, "agent idle");
+    await waitForFrame(rendered.lastFrame, "状态：空闲");
   });
 
   it("coalesces streamed assistant deltas into one transcript line", async () => {
@@ -244,7 +244,7 @@ describe("AgentTui render", () => {
     const frame = rendered.lastFrame() ?? "";
     expect(frame).toContain("当前有哪些skill");
     expect(frame).not.toContain("当前\n  有哪些\n  skill");
-    await waitForFrame(rendered.lastFrame, "agent idle");
+    await waitForFrame(rendered.lastFrame, "状态：空闲");
   });
 
   it("replaces streamed raw markdown with the final rendered markdown instead of duplicating it", async () => {
@@ -314,6 +314,41 @@ describe("AgentTui render", () => {
     expect(frame).not.toContain("context ◉◉◉◉◉◉◉◉○○ 82%\n  done");
   });
 
+  it("shows one fixed Chinese agent status on the right side of the context line", async () => {
+    const workspacePath = await mkdtemp(join(tmpdir(), "coding-agent-tui-"));
+    const rendered = render(
+      React.createElement(AgentTui, {
+        config: {
+          workspacePath,
+          provider: "deepseek",
+          model: "deepseek-reasoner"
+        },
+        createSession: () => ({
+          async start() {},
+          async stop() {},
+          async *send() {
+            yield { type: "context.budget" as const, taskId: "task_1", usedTokens: 820, maxTokens: 1000, ratio: 0.82, compactAtRatio: 0.75 };
+            yield { type: "tool.started" as const, taskId: "task_1", tool: "bash", summary: "pnpm test" };
+            yield { type: "task.finished" as const, taskId: "task_1", summary: "done" };
+          },
+          async approve() {}
+        })
+      })
+    );
+
+    rendered.stdin.write("task");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    rendered.stdin.write("\r");
+    await waitForFrame(rendered.lastFrame, "done");
+    const frame = rendered.lastFrame() ?? "";
+    const contextLine = frame.split("\n").find((line) => line.includes("context ◉◉◉◉◉◉◉◉○○ 82%")) ?? "";
+
+    expect(contextLine).toContain("状态：空闲");
+    expect(contextLine.indexOf("状态：空闲")).toBeGreaterThan(contextLine.indexOf("compact at 75%"));
+    expect(frame).not.toContain("agent running");
+    expect(frame).not.toContain("agent idle");
+  });
+
   it("renders the full transcript without keyboard-controlled scroll paging", async () => {
     const workspacePath = await mkdtemp(join(tmpdir(), "coding-agent-tui-"));
     const rendered = render(
@@ -379,12 +414,12 @@ describe("AgentTui render", () => {
     rendered.stdin.write("task");
     await new Promise((resolve) => setTimeout(resolve, 0));
     rendered.stdin.write("\r");
-    await waitForFrame(rendered.lastFrame, "agent running");
+    await waitForFrame(rendered.lastFrame, "状态：运行中");
 
     const beforeFinish = rendered.frames.join("\n");
-    expect(beforeFinish).toContain("agent running");
+    expect(beforeFinish).toContain("状态：运行中");
     expect(beforeFinish).not.toContain("stream-24");
-    expect(rendered.lastFrame() ?? "").toContain("agent running");
+    expect(rendered.lastFrame() ?? "").toContain("状态：运行中");
 
     await waitForCondition(() => releaseFinish !== undefined, "session to reach finish gate");
     releaseFinish?.();
@@ -394,8 +429,8 @@ describe("AgentTui render", () => {
     expect(afterFinish).toContain("stream-24");
     expect(afterFinish).not.toContain("╭");
     expect(afterFinish).not.toContain("╰");
-    await waitForFrame(rendered.lastFrame, "agent idle");
-    await waitForFrames(rendered.frames, "agent idle");
+    await waitForFrame(rendered.lastFrame, "状态：空闲");
+    await waitForFrames(rendered.frames, "状态：空闲");
   });
 
   it("recalls previous prompts with up and down arrows", async () => {
@@ -602,6 +637,52 @@ describe("AgentTui render", () => {
     expect(frame).not.toContain("heuristic summary");
   });
 
+  it("/compact treats session-too-small failures as skipped compaction", async () => {
+    const compactContext = vi.fn(async function* () {
+      yield {
+        type: "task.failed" as const,
+        taskId: "manual_compact",
+        error: {
+          code: "UNKNOWN_ERROR" as const,
+          message: "Nothing to compact (session too small)"
+        }
+      };
+    });
+    const rendered = render(
+      React.createElement(AgentTui, {
+        config: {
+          workspacePath: "/repo",
+          provider: "deepseek",
+          model: "deepseek-reasoner"
+        },
+        skillManager: {
+          async list() {
+            return [];
+          },
+          async install() {
+            throw new Error("not used");
+          },
+          async setEnabled() {}
+        },
+        createSession: () => ({
+          async start() {},
+          async stop() {},
+          async *send() {},
+          async approve() {},
+          compactContext
+        })
+      })
+    );
+
+    rendered.stdin.write("/compact");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    rendered.stdin.write("\r");
+    await waitForFrame(rendered.lastFrame, "context compact skipped: Nothing to compact (session too small).");
+    const frame = rendered.lastFrame() ?? "";
+
+    expect(frame).not.toContain("UNKNOWN_ERROR");
+  });
+
   it("opens plan mode from /plan without sending it to the model", async () => {
     const send = vi.fn(async function* () {});
     const rendered = render(
@@ -611,6 +692,38 @@ describe("AgentTui render", () => {
           provider: "deepseek",
           model: "deepseek-reasoner"
         },
+        skillManager: emptySkillManager(),
+        createSession: () => ({
+          async start() {},
+          async stop() {},
+          send,
+          async approve() {}
+        })
+      })
+    );
+
+    rendered.stdin.write("/plan");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    rendered.stdin.write("\r");
+    await waitForFrame(rendered.lastFrame, "PLAN MODE");
+    expect(rendered.lastFrame()).not.toContain("当前模式只用于规划");
+    expect(rendered.lastFrame()).not.toContain("输入“确认执行”");
+
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it("keeps editing enabled in plan mode and sends planning-only prompts", async () => {
+    const send = vi.fn(async function* () {
+      yield { type: "task.finished" as const, taskId: "task_1", summary: "计划写好了，是否执行？" };
+    });
+    const rendered = render(
+      React.createElement(AgentTui, {
+        config: {
+          workspacePath: "/repo",
+          provider: "deepseek",
+          model: "deepseek-reasoner"
+        },
+        skillManager: emptySkillManager(),
         createSession: () => ({
           async start() {},
           async stop() {},
@@ -625,7 +738,101 @@ describe("AgentTui render", () => {
     rendered.stdin.write("\r");
     await waitForFrame(rendered.lastFrame, "PLAN MODE");
 
-    expect(send).not.toHaveBeenCalled();
+    rendered.stdin.write("重构登录流程");
+    await waitForPrompt(rendered.lastFrame, "重构登录流程");
+    rendered.stdin.write("\r");
+    await waitForFrame(rendered.lastFrame, "计划写好了，是否执行？");
+
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(send.mock.calls[0][0]).toContain("当前处于计划模式");
+    expect(send.mock.calls[0][0]).toContain("不要修改文件或执行开发");
+    expect(send.mock.calls[0][0]).toContain("用户请求：重构登录流程");
+    expect(rendered.lastFrame()).toContain("PLAN MODE");
+    expect(rendered.lastFrame()).toContain("重构登录流程");
+    expect(rendered.lastFrame()).not.toContain("当前处于计划模式");
+    expect(rendered.lastFrame()).not.toContain("当前模式只用于规划");
+    expect(rendered.lastFrame()).not.toContain("输入“确认执行”");
+    expect(planModeLineIndex(rendered.lastFrame() ?? "")).toBeGreaterThan(promptBoxLineIndex(rendered.lastFrame() ?? ""));
+  });
+
+  it("stays in plan mode for adjustments and exits only when execution is confirmed", async () => {
+    const prompts: string[] = [];
+    const send = vi.fn(async function* (prompt: string) {
+      prompts.push(prompt);
+      yield { type: "task.finished" as const, taskId: `task_${prompts.length}`, summary: `done ${prompts.length}` };
+    });
+    const rendered = render(
+      React.createElement(AgentTui, {
+        config: {
+          workspacePath: "/repo",
+          provider: "deepseek",
+          model: "deepseek-reasoner"
+        },
+        skillManager: emptySkillManager(),
+        createSession: () => ({
+          async start() {},
+          async stop() {},
+          send,
+          async approve() {}
+        })
+      })
+    );
+
+    rendered.stdin.write("/plan");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    rendered.stdin.write("\r");
+    await waitForFrame(rendered.lastFrame, "PLAN MODE");
+
+    rendered.stdin.write("继续调整错误处理");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    rendered.stdin.write("\r");
+    await waitForFrame(rendered.lastFrame, "done 1");
+    expect(rendered.lastFrame()).toContain("PLAN MODE");
+
+    rendered.stdin.write("确认执行");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    rendered.stdin.write("\r");
+    await waitForFrame(rendered.lastFrame, "done 2");
+
+    expect(prompts[0]).toContain("继续调整错误处理");
+    expect(prompts[0]).toContain("不要修改文件或执行开发");
+    expect(prompts[1]).toContain("用户已确认执行");
+    expect(prompts[1]).toContain("开始开发");
+    expect(rendered.lastFrame()).not.toContain("当前模式只用于规划");
+  });
+
+  it("shows a loading status while the agent is running", async () => {
+    let releaseFinish: (() => void) | undefined;
+    const rendered = render(
+      React.createElement(AgentTui, {
+        config: {
+          workspacePath: "/repo",
+          provider: "deepseek",
+          model: "deepseek-reasoner"
+        },
+        skillManager: emptySkillManager(),
+        createSession: () => ({
+          async start() {},
+          async stop() {},
+          async *send() {
+            await new Promise<void>((resolve) => {
+              releaseFinish = resolve;
+            });
+            yield { type: "task.finished" as const, taskId: "task_1", summary: "done" };
+          },
+          async approve() {}
+        })
+      })
+    );
+
+    rendered.stdin.write("task");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    rendered.stdin.write("\r");
+    await waitForFrame(rendered.lastFrame, "状态：运行中.");
+
+    await waitForCondition(() => releaseFinish !== undefined, "session to reach finish gate");
+    releaseFinish?.();
+    await waitForFrame(rendered.lastFrame, "状态：空闲");
   });
 
   it("lists workspace files for @ completion", async () => {
@@ -859,6 +1066,18 @@ describe("AgentTui render", () => {
   });
 });
 
+function emptySkillManager() {
+  return {
+    async list() {
+      return [];
+    },
+    async install() {
+      throw new Error("not used");
+    },
+    async setEnabled() {}
+  };
+}
+
 async function waitForFrame(lastFrame: () => string | undefined, text: string): Promise<void> {
   for (let attempt = 0; attempt < 20; attempt++) {
     if ((lastFrame() ?? "").includes(text)) {
@@ -904,4 +1123,12 @@ function currentPromptText(frame: string): string {
   const matches = [...frame.matchAll(/│ ([^│]*?)▌\s*│/g)];
   const value = matches.at(-1)?.[1] ?? "";
   return value.trimEnd();
+}
+
+function promptBoxLineIndex(frame: string): number {
+  return frame.split("\n").findIndex((line) => line.includes("└") && line.includes("┘"));
+}
+
+function planModeLineIndex(frame: string): number {
+  return frame.split("\n").findIndex((line) => line.includes("PLAN MODE"));
 }

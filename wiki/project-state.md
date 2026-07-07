@@ -252,13 +252,14 @@ M6 不做以下事情：
 
 ## M7 计划想法
 
-M7 先记录几个下一阶段的主要想法，不在这里展开成详细设计：
+M7 先记录几个下一阶段的主要想法，默认仍走 Pi RPC 路径，不把实验 runtime 扩成主路径。
 
 - 知识库：维护知识库作为项目事实来源，让架构、边界、阶段状态和关键决策更稳定地沉淀下来。
-- 工作区全局记忆：希望 agent 在同一 workspace 下能逐步复用长期信息，减少每次任务都从头解释项目背景。也可与设置全局。
+- 工作区全局记忆：希望 agent 在同一 workspace 下能逐步复用长期信息，减少每次任务都从头解释项目背景。也可与设置全局，例如CLAUDE.md\GEMINI.md 这类
 - 中止操作：希望除了暂停之外，再补一个更明确的任务中止能力，让用户能直接结束当前任务。
-
-这一阶段先放方向，不提前把实现结构、交互细节和底层机制写死，后面再按真实验证情况收敛。
+- Todo：参考 Claude Code/Agent SDK 的 TodoWrite 模式，作为 Potato Pi extension 注入真实工具，而不是只靠提示词要求模型输出列表。Pi 工具结果映射为 `todo.updated`，TUI 只展示结构化进度摘要。
+- 系统提示词注入：继续使用 Pi RPC 原生 `--system-prompt` 和 `--append-system-prompt` 分层。稳定、可缓存的 Potato 基础提示词、skills、MCP、SubAgent、todo 工具说明放在 system prompt；每轮动态内容放 append system prompt 或用户消息，避免破坏稳定前缀。
+- 缓存命中：不在 Potato 内部估算缓存命中。只消费 Pi/provider usage 中明确返回的字段，例如 OpenAI `usage.prompt_tokens_details.cached_tokens`、Anthropic `cache_read_input_tokens` / `cache_creation_input_tokens`，映射为 `prompt.cache` 并在 CLI 中展示。
 
 ## 阶段文档
 

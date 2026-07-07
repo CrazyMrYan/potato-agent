@@ -142,6 +142,10 @@ export class EventStreamRenderer {
           return { kind: "muted", text: this.dim(`context compact skipped: ${event.summary}`) };
         }
         return { kind: "warning", text: this.yellow(`context compacted ${event.originalTokens} -> ${event.compactedTokens} tokens`) };
+      case "todo.updated":
+        return { kind: "step", text: this.blue(formatTodoSummary(event.todos)) };
+      case "prompt.cache":
+        return { kind: "muted", text: this.dim(formatPromptCache(event.cachedTokens, event.inputTokens, event.cacheWriteTokens)) };
       case "verification.started":
         return { kind: "tool", text: this.gray(event.command) };
       case "verification.finished":
@@ -149,6 +153,9 @@ export class EventStreamRenderer {
       case "task.finished":
         return this.renderTaskFinished(event.summary);
       case "task.failed":
+        if (isNothingToCompactFailure(event.taskId, event.error.message)) {
+          return { kind: "muted", text: this.dim(`context compact skipped: ${normalizeNothingToCompactMessage(event.error.message)}`) };
+        }
         return { kind: "error", text: this.red(`${event.error.code} ${event.error.message}`) };
     }
     return assertNever(event);
@@ -251,4 +258,33 @@ function formatContextBudget(usedTokens: number, maxTokens: number, ratio: numbe
   const ring = `${"◉".repeat(filled)}${"○".repeat(10 - filled)}`;
   const percent = ratio > 0 && ratio < 0.01 ? "<1%" : `${Math.round(ratio * 100)}%`;
   return `context ${ring} ${percent} · ${usedTokens}/${maxTokens} tokens · compact at ${Math.round(compactAtRatio * 100)}%`;
+}
+
+function formatTodoSummary(todos: Array<{ status: string }>): string {
+  const inProgress = todos.filter((todo) => todo.status === "in_progress").length;
+  const completed = todos.filter((todo) => todo.status === "completed").length;
+  return `todo 已更新：${todos.length} 项 · ${inProgress} 进行中 · ${completed} 已完成`;
+}
+
+function formatPromptCache(cachedTokens: number, inputTokens: number | undefined, cacheWriteTokens: number | undefined): string {
+  const parts = [`缓存命中：${cachedTokens} tokens`];
+  if (inputTokens !== undefined) {
+    parts.push(`输入 ${inputTokens} tokens`);
+  }
+  if (cacheWriteTokens !== undefined) {
+    parts.push(`写入缓存 ${cacheWriteTokens} tokens`);
+  }
+  return parts.join(" · ");
+}
+
+function isNothingToCompactFailure(taskId: string, message: string): boolean {
+  return taskId.endsWith("_compact") && /nothing to compact|session too small/i.test(message);
+}
+
+function normalizeNothingToCompactMessage(message: string): string {
+  const trimmed = message.trim();
+  if (!trimmed) {
+    return "Nothing to compact.";
+  }
+  return trimmed.endsWith(".") ? trimmed : `${trimmed}.`;
 }

@@ -144,6 +144,29 @@ describe("EventStreamRenderer", () => {
     ).toBe("context compact skipped: Nothing to compact (session too small).");
   });
 
+  it("renders todo updates and prompt cache hits in Chinese", () => {
+    const renderer = new EventStreamRenderer({ colors: false });
+
+    expect(
+      renderer.render({
+        type: "todo.updated",
+        taskId: "task_1",
+        todos: [
+          { content: "写失败测试", status: "completed", activeForm: "正在写失败测试" },
+          { content: "实现 Pi extension", status: "in_progress", activeForm: "正在实现 Pi extension" }
+        ]
+      } as never)
+    ).toBe("todo 已更新：2 项 · 1 进行中 · 1 已完成");
+    expect(
+      renderer.render({
+        type: "prompt.cache",
+        taskId: "task_1",
+        cachedTokens: 512,
+        inputTokens: 1200
+      } as never)
+    ).toBe("缓存命中：512 tokens · 输入 1200 tokens");
+  });
+
   it("colors diff lines by semantic kind instead of tinting the whole block uniformly", () => {
     const renderer = new EventStreamRenderer({ colors: true });
     const output = renderer.render({

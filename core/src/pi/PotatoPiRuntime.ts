@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { AgentConfig, AgentMcpServerConfig } from "../config/AgentConfig.js";
@@ -10,13 +10,16 @@ export type PotatoPiRuntimeArtifacts = {
 };
 
 export function ensurePotatoPiRuntime(config: AgentConfig): PotatoPiRuntimeArtifacts {
-  if (!config.workspacePath) {
+  if (!config.workspacePath || !existsSync(config.workspacePath)) {
     return { extensionPaths: [], systemPromptAdditions: [] };
   }
 
   const extensionPaths: string[] = [];
   const systemPromptAdditions: string[] = [];
   const policyMode = config.permissionPolicy?.mode ?? "confirm";
+
+  extensionPaths.push(writeRuntimeExtension(config.workspacePath, "potato-todo.ts", POTATO_TODO_EXTENSION_SOURCE));
+  systemPromptAdditions.push(POTATO_TODO_SYSTEM_PROMPT);
 
   if (policyMode === "confirm") {
     extensionPaths.push(writeRuntimeExtension(config.workspacePath, "potato-approval.ts", POTATO_APPROVAL_EXTENSION_SOURCE));
@@ -163,6 +166,50 @@ function formatMcpResult(result) {
 function escapeYamlScalar(value: string): string {
   return /^[a-zA-Z0-9 _.,:/@-]+$/.test(value) ? value : JSON.stringify(value);
 }
+
+const POTATO_TODO_SYSTEM_PROMPT = [
+  "Potato todo tool:",
+  "Use potato_todo_write for multi-step work that needs visible progress tracking.",
+  "Keep todos short, action-oriented, and update status as work progresses.",
+  "Use exactly one in_progress todo at a time unless the work is intentionally parallel."
+].join("\n");
+
+const POTATO_TODO_EXTENSION_SOURCE = `import { Type } from "typebox";
+
+let todos = [];
+
+export default function potatoTodoExtension(pi) {
+  pi.registerTool({
+    name: "potato_todo_write",
+    label: "Update todo list",
+    description: "Replace the visible Potato todo list for the current task. Use this for multi-step coding work.",
+    parameters: Type.Object({
+      todos: Type.Array(Type.Object({
+        content: Type.String(),
+        status: Type.Union([Type.Literal("pending"), Type.Literal("in_progress"), Type.Literal("completed")]),
+        activeForm: Type.Optional(Type.String())
+      }))
+    }),
+    async execute(_toolCallId, params) {
+      todos = Array.isArray(params && params.todos) ? params.todos.map(normalizeTodo).filter(Boolean) : [];
+      return {
+        content: [{ type: "text", text: \`Todo list updated: \${todos.length} item(s).\` }],
+        details: { kind: "potato.todo", todos }
+      };
+    }
+  });
+}
+
+function normalizeTodo(todo) {
+  if (!todo || typeof todo.content !== "string") return undefined;
+  const status = ["pending", "in_progress", "completed"].includes(todo.status) ? todo.status : "pending";
+  return {
+    content: todo.content,
+    status,
+    ...(typeof todo.activeForm === "string" ? { activeForm: todo.activeForm } : {})
+  };
+}
+`;
 
 const POTATO_APPROVAL_EXTENSION_SOURCE = `import { existsSync, readFileSync } from "node:fs";
 import { isAbsolute, join } from "node:path";

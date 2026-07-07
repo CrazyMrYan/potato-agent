@@ -21,6 +21,7 @@ export type RawPiEvent = {
   toolName?: string;
   args?: unknown;
   result?: unknown;
+  usage?: unknown;
   isError?: boolean;
 };
 
@@ -55,10 +56,14 @@ export class PiEventMapper {
             tool: event.toolName ?? "unknown",
             success: !event.isError,
             output: summarizeToolResult(event.result)
-          }
+          },
+          ...this.mapTodoToolResult(event)
         ];
       case "extension_ui_request":
         return this.mapExtensionUiRequest(event);
+      case "usage":
+      case "usage_update":
+        return this.mapUsage(event.usage ?? event);
       default:
         return [];
     }
@@ -109,6 +114,42 @@ export class PiEventMapper {
           detail,
           risk: inferApprovalRisk(title, detail)
         }
+      }
+    ];
+  }
+
+  private mapTodoToolResult(event: RawPiEvent): AgentEvent[] {
+    if (event.toolName !== "potato_todo_write") {
+      return [];
+    }
+
+    const todos = extractTodos(event.result);
+    return todos.length > 0 ? [{ type: "todo.updated", taskId: this.taskId, todos }] : [];
+  }
+
+  private mapUsage(usage: unknown): AgentEvent[] {
+    const record = toRecord(usage);
+    const promptDetails = toRecord(record?.prompt_tokens_details);
+    const anthropicInput = toRecord(record?.input_tokens_details);
+    const cachedTokens =
+      pickNumber(promptDetails, ["cached_tokens", "cachedTokens"]) ??
+      pickNumber(anthropicInput, ["cache_read_input_tokens", "cacheReadInputTokens"]) ??
+      pickNumber(record, ["cache_read_input_tokens", "cacheReadInputTokens", "cached_tokens", "cachedTokens"]);
+    if (!cachedTokens || cachedTokens <= 0) {
+      return [];
+    }
+
+    const cacheWriteTokens =
+      pickNumber(anthropicInput, ["cache_creation_input_tokens", "cacheCreationInputTokens"]) ??
+      pickNumber(record, ["cache_creation_input_tokens", "cacheCreationInputTokens"]);
+    const inputTokens = pickNumber(record, ["prompt_tokens", "promptTokens", "input_tokens", "inputTokens"]);
+    return [
+      {
+        type: "prompt.cache",
+        taskId: this.taskId,
+        cachedTokens,
+        ...(cacheWriteTokens !== undefined ? { cacheWriteTokens } : {}),
+        ...(inputTokens !== undefined ? { inputTokens } : {})
       }
     ];
   }
@@ -210,6 +251,28 @@ function toRecord(value: unknown): Record<string, unknown> | undefined {
   return typeof value === "object" && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined;
 }
 
+function extractTodos(result: unknown): Array<{ content: string; status: "pending" | "in_progress" | "completed"; activeForm?: string }> {
+  const record = toRecord(result);
+  const details = toRecord(record?.details);
+  const rawTodos = Array.isArray(details?.todos) ? details.todos : [];
+  return rawTodos
+    .map((item) => {
+      const todo = toRecord(item);
+      const content = pickString(todo, ["content"]);
+      const status = pickTodoStatus(todo?.status);
+      if (!content || !status) {
+        return undefined;
+      }
+      const activeForm = pickString(todo, ["activeForm", "active_form"]);
+      return {
+        content,
+        status,
+        ...(activeForm ? { activeForm } : {})
+      };
+    })
+    .filter((item): item is { content: string; status: "pending" | "in_progress" | "completed"; activeForm?: string } => Boolean(item));
+}
+
 function pickString(input: Record<string, unknown> | undefined, keys: string[]): string | undefined {
   if (!input) {
     return undefined;
@@ -223,6 +286,25 @@ function pickString(input: Record<string, unknown> | undefined, keys: string[]):
   }
 
   return undefined;
+}
+
+function pickNumber(input: Record<string, unknown> | undefined, keys: string[]): number | undefined {
+  if (!input) {
+    return undefined;
+  }
+
+  for (const key of keys) {
+    const value = input[key];
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return value;
+    }
+  }
+
+  return undefined;
+}
+
+function pickTodoStatus(value: unknown): "pending" | "in_progress" | "completed" | undefined {
+  return value === "pending" || value === "in_progress" || value === "completed" ? value : undefined;
 }
 
 function truncate(value: string, maxLength = 160): string {
