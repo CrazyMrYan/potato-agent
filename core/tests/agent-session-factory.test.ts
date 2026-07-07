@@ -418,6 +418,40 @@ describe("AgentSessionFactory", () => {
     ]);
   });
 
+  it("records native compaction as reduced budget state for later turns", async () => {
+    const adapter = new FakeSessionAdapter();
+    adapter.send = async function* (prompt: string) {
+      this.prompts.push(prompt);
+      yield { type: "task.finished" as const, taskId: `turn_${this.prompts.length}`, summary: "large output ".repeat(500) };
+    };
+    const traceStore = new MemoryTraceStore();
+    const factory = new AgentSessionFactory({
+      createAdapter: () => adapter,
+      createTraceStore: () => traceStore,
+      createContextBudget: () => new HeuristicContextBudgetManager(1000, 0.75),
+      env: { DEEPSEEK_API_KEY: "test-key" }
+    });
+    const session = await factory.create({
+      provider: "deepseek",
+      model: "deepseek-reasoner",
+      workspacePath: "/repo"
+    });
+
+    for await (const _event of session.send("large prompt ".repeat(300))) {
+      // accumulate a large budget
+    }
+    for await (const _event of session.compactContext("manual")) {
+      // consume native compaction
+    }
+    let nextBudget = 0;
+    for await (const event of session.send("continue")) {
+      if (event.type === "context.budget") nextBudget = event.usedTokens;
+    }
+
+    expect(traceStore.entries.find((entry) => entry.kind === "context.compacted")).toEqual(expect.objectContaining({ kind: "context.compacted" }));
+    expect(nextBudget).toBeLessThan(100);
+  });
+
   it("creates a standard runtime session when adapter is runtime", async () => {
     const factory = new AgentSessionFactory({
       env: { OPENAI_API_KEY: "test-key" },

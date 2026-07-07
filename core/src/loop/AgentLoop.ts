@@ -195,6 +195,7 @@ export class AgentLoop {
     }
 
     const result = await manager.compact(input, budget);
+    manager.recordCompaction?.(result);
     await this.trace({ timestamp: nowIso(), taskId: input.taskId, kind: "context.compacted", result });
     return [
       budgetEvent,

@@ -182,6 +182,7 @@ export class AgentSession {
           originalTokens: result.originalTokens ?? 0,
           compactedTokens: result.compactedTokens ?? 0
         };
+        this.contextBudget?.recordCompaction?.(compacted);
         const event: AgentEvent = {
           type: "context.compacted",
           taskId,
@@ -297,6 +298,7 @@ export class AgentSession {
     }
 
     const result = await this.contextBudget.compact(input, budget);
+    this.contextBudget.recordCompaction?.(result);
     const compactedEvent: AgentEvent = {
       type: "context.compacted",
       taskId: input.taskId,
