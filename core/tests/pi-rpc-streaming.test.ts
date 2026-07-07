@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AgentEvent, RunTaskInput } from "@potato/protocol";
 import { PiRpcAdapter, type PiRpcClientLike } from "../src/pi/PiRpcAdapter.js";
+import { PiRpcSessionAdapter, type PiSessionClientLike } from "../src/pi/PiSessionAdapter.js";
 
 class FakeRpcClient implements PiRpcClientLike {
   private listeners: Array<(event: unknown) => void> = [];
@@ -12,6 +13,7 @@ class FakeRpcClient implements PiRpcClientLike {
   promptStarted = false;
   lastAssistantText: string | null = "完成";
   stderr = "";
+  idleTimeouts: Array<number | undefined> = [];
 
   async start(): Promise<void> {
     this.started = true;
@@ -31,7 +33,8 @@ class FakeRpcClient implements PiRpcClientLike {
     });
   }
 
-  waitForIdle(): Promise<void> {
+  waitForIdle(timeout?: number): Promise<void> {
+    this.idleTimeouts.push(timeout);
     return new Promise((resolve) => {
       this.resolveIdle = resolve;
     });
@@ -139,6 +142,70 @@ describe("PiRpcAdapter streaming", () => {
 
     client.finish();
     expect((await iterator.next()).value).toMatchObject({ type: "task.finished", summary: "完成" });
+  });
+
+  it("waits for RPC idle without imposing a Potato-side timeout", async () => {
+    const client = new FakeRpcClient();
+    const adapter = new PiRpcAdapter(
+      {
+        provider: "deepseek",
+        model: "deepseek-chat",
+        workspacePath: "/repo",
+        apiKeyEnvName: "DEEPSEEK_API_KEY",
+        apiKey: "test-key",
+        timeoutMs: 1000,
+        permissionPolicy: { mode: "confirm" }
+      },
+      { createClient: () => client }
+    );
+
+    const consume = (async () => {
+      for await (const _event of adapter.run({
+        taskId: "task_1",
+        workspacePath: "/repo",
+        prompt: "解释项目",
+        mode: "run",
+        approvalMode: "manual"
+      })) {
+        // consume stream
+      }
+    })();
+
+    await waitUntil(() => client.idleTimeouts.length > 0);
+    client.finish();
+    await consume;
+
+    expect(client.idleTimeouts).toEqual([undefined]);
+  });
+
+  it("waits for reusable session idle without imposing a Potato-side timeout", async () => {
+    const client = new FakeRpcClient();
+    const adapter = new PiRpcSessionAdapter(
+      {
+        provider: "deepseek",
+        model: "deepseek-chat",
+        workspacePath: "/repo",
+        apiKeyEnvName: "DEEPSEEK_API_KEY",
+        apiKey: "test-key",
+        timeoutMs: 1000,
+        permissionPolicy: { mode: "confirm" }
+      },
+      { createClient: () => client as PiSessionClientLike }
+    );
+
+    await adapter.start();
+    const consume = (async () => {
+      for await (const _event of adapter.send("解释项目")) {
+        // consume stream
+      }
+    })();
+
+    await waitUntil(() => client.idleTimeouts.length > 0);
+    client.finish();
+    await consume;
+    await adapter.stop();
+
+    expect(client.idleTimeouts).toEqual([undefined]);
   });
 
   it("maps Pi tool arguments and assistant deltas into visible events", async () => {

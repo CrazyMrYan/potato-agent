@@ -59,7 +59,7 @@ export class PiRpcAdapter implements PiAdapter {
       const task = (async () => {
         try {
           await client.prompt(input.prompt);
-          await client.waitForIdle(this.options.timeoutMs ?? 120_000);
+          await client.waitForIdle();
           const summary = await resolveFinalSummary(client, sawAssistantText);
           if (summary.type === "failed") {
             stream.push(summary.event(input.taskId));

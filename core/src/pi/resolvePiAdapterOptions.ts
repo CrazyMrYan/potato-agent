@@ -39,7 +39,6 @@ export function resolvePiAdapterOptions(input: ModelConfigInput): PiAdapterOptio
     apiKeyEnvName: apiKeyConfig.envName,
     apiKey: apiKeyConfig.apiKey,
     timeoutMs: input.timeoutMs,
-    systemPrompt: input.systemPrompt,
     appendSystemPrompt: input.appendSystemPrompt,
     skills: input.skills,
     mcpServers: input.mcpServers,

@@ -255,11 +255,15 @@ M6 不做以下事情：
 M7 先记录几个下一阶段的主要想法，默认仍走 Pi RPC 路径，不把实验 runtime 扩成主路径。
 
 - 知识库：维护知识库作为项目事实来源，让架构、边界、阶段状态和关键决策更稳定地沉淀下来。
-- 工作区全局记忆：希望 agent 在同一 workspace 下能逐步复用长期信息，减少每次任务都从头解释项目背景。也可与设置全局，例如CLAUDE.md\GEMINI.md 这类
 - 中止操作：希望除了暂停之外，再补一个更明确的任务中止能力，让用户能直接结束当前任务。
-- Todo：参考 Claude Code/Agent SDK 的 TodoWrite 模式，作为 Potato Pi extension 注入真实工具，而不是只靠提示词要求模型输出列表。Pi 工具结果映射为 `todo.updated`，TUI 只展示结构化进度摘要。
-- 系统提示词注入：继续使用 Pi RPC 原生 `--system-prompt` 和 `--append-system-prompt` 分层。稳定、可缓存的 Potato 基础提示词、skills、MCP、SubAgent、todo 工具说明放在 system prompt；每轮动态内容放 append system prompt 或用户消息，避免破坏稳定前缀。
-- 缓存命中：不在 Potato 内部估算缓存命中。只消费 Pi/provider usage 中明确返回的字段，例如 OpenAI `usage.prompt_tokens_details.cached_tokens`、Anthropic `cache_read_input_tokens` / `cache_creation_input_tokens`，映射为 `prompt.cache` 并在 CLI 中展示。
+- Todo：参考 Claude Code/Agent SDK 的 TodoWrite 模式，作为 Potato Pi extension 注入真实工具，而不是只靠提示词要求模型输出列表。Pi 工具结果映射为 `todo.updated`；TUI 默认展示结构化进度摘要，开启 `/details` 后展示每条 todo 明细。
+- 系统提示词注入：继续使用 Pi RPC 原生 `--system-prompt` 和 `--append-system-prompt` 分层。Potato 内置系统提示词、skills、MCP、SubAgent、todo 工具说明始终由 Potato 放在 system prompt，不允许项目指令替换；workspace 用户指令文件命名为 `POTATO.md`，读取后作为较低优先级 append system prompt 注入，不写入 `.potato/config.json`。
+- 缓存命中：不在 Potato 内部估算缓存命中。Pi TUI footer 已有 token/cache usage（R/W/CH）展示；Potato 当前 Pi RPC 适配只在 Pi/provider 事件流明确透出 usage 字段时映射为 `prompt.cache`。如果 Pi RPC 后续提供稳定 session stats API，再改为直接读取 Pi 的 cache read/write/hit rate。
+
+## M8 阶段记录
+
+- 工作区全局记忆当前按项目指令文件实现：workspace 根目录的 `POTATO.md` 由 `FileAgentConfigStore` 读取为 transient `projectInstructions`，在 Pi RPC 路径通过 `--append-system-prompt` 注入，并在内置系统提示词中被定义为低于 Potato 产品指令的项目记忆。`.potato/config.json` 只保存结构化配置，保存时会剥离 `projectInstructions`，因此不会把 `POTATO.md` 内容写回配置文件。
+- 当前没有独立的长期记忆库、向量召回、自动抽取用户偏好或自动写入记忆；`trace` 仍是运行记录，不参与记忆召回。TUI 路径会加载 `POTATO.md`，一次性 `run/chat` 路径只有在调用方显式传入 `projectInstructions` 时才会注入。
 
 ## 阶段文档
 

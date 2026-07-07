@@ -167,6 +167,22 @@ describe("EventStreamRenderer", () => {
     ).toBe("缓存命中：512 tokens · 输入 1200 tokens");
   });
 
+  it("renders todo details when detail output is enabled", () => {
+    const renderer = new EventStreamRenderer({ colors: false, streamDetails: true });
+
+    expect(
+      renderer.render({
+        type: "todo.updated",
+        taskId: "task_1",
+        todos: [
+          { content: "写失败测试", status: "completed", activeForm: "正在写失败测试" },
+          { content: "实现 Pi extension", status: "in_progress", activeForm: "正在实现 Pi extension" },
+          { content: "补真实 Pi 验证", status: "pending" }
+        ]
+      } as never)
+    ).toBe(["todo 已更新：3 项 · 1 进行中 · 1 已完成", "  ✓ 写失败测试", "  ● 实现 Pi extension", "  ○ 补真实 Pi 验证"].join("\n"));
+  });
+
   it("colors diff lines by semantic kind instead of tinting the whole block uniformly", () => {
     const renderer = new EventStreamRenderer({ colors: true });
     const output = renderer.render({

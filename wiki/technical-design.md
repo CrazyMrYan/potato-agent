@@ -156,7 +156,7 @@ M5.2 开始，任务生命周期的执行细节下沉到 `AgentLoop`。`AgentOrc
 - 解析 Pi CLI 入口。
 - 启动 Pi RPC 子进程。
 - 使用 `core/` 中的模型配置解析结果传入 provider、model 和供应商 API Key。
-- 通过 Pi CLI 参数透传当前 RPC 形态支持的系统提示词、skill 和工具 allow/deny。
+- 通过 Pi CLI 参数注入 Potato 内置系统提示词、workspace 项目指令、skill 和工具 allow/deny。
 - 注入任务上下文。
 - 转换 Pi 事件。
 - 捕获错误。
@@ -164,7 +164,8 @@ M5.2 开始，任务生命周期的执行细节下沉到 `AgentLoop`。`AgentOrc
 
 当前 RPC 形态的边界必须明确：
 
-- `systemPrompt`、`appendSystemPrompt`、`skills`、`tools.allow`、`tools.deny`、`tools.noTools`、`tools.noBuiltinTools` 可以转换为 Pi CLI 参数。
+- Potato 内置系统提示词由 core 固定构造并转换为 Pi `--system-prompt`，不作为用户配置保存。
+- `projectInstructions`、`appendSystemPrompt`、`skills`、`tools.allow`、`tools.deny`、`tools.noTools`、`tools.noBuiltinTools` 可以转换为 Pi CLI 参数。
 - `mcpServers` 已是本项目 core 配置模型的一部分，但当前 Pi RPC CLI 参数没有直接 MCP server 入口。
 - `permissionPolicy` 已是本项目 core 配置模型的一部分，但当前 Pi RPC 子进程内部仍执行 Pi 自己的工具策略。
 - 真正由本项目接管 MCP 和工具二次确认，需要后续切到 Pi SDK session 或本项目 `potato-runtime`，在 `AgentOrchestrator -> Tool Boundary` 处拦截工具调用。
@@ -205,7 +206,7 @@ type AgentConfig = {
   apiKey?: string;
   workspacePath?: string;
   timeoutMs?: number;
-  systemPrompt?: string;
+  projectInstructions?: string;
   appendSystemPrompt?: string[];
   skills?: Array<{ path: string }>;
   mcpServers?: Array<{ name: string; command: string; args?: string[]; env?: Record<string, string> }>;

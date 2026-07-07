@@ -412,7 +412,7 @@ export function AgentTui(props: AgentTuiProps): React.ReactElement {
           sessionRef.current = activeSession;
         }
 
-        const renderer = new EventStreamRenderer({ colors: false, streamText: false, streamDetails: expandedKinds.thinking, collectThinking: true });
+        const renderer = new EventStreamRenderer({ colors: false, streamText: false, streamDetails: true, collectThinking: true });
         for await (const event of activeSession.send(prompt)) {
           if (event.type === "approval.requested") {
             setPendingApproval(event.request);
@@ -427,7 +427,7 @@ export function AgentTui(props: AgentTuiProps): React.ReactElement {
         setBusy(false);
       }
     },
-    [appendEvent, appendEvents, buildRuntimeConfig, busy, expandedKinds.thinking, props]
+    [appendEvent, appendEvents, buildRuntimeConfig, busy, props]
   );
 
   const respondToApproval = useCallback(
@@ -1239,6 +1239,7 @@ function filterDisplayEvents(
   let hiddenThinking = 0;
   let hiddenTool = 0;
   let hiddenDiff = 0;
+  let hiddenTodo = 0;
 
   const flushHidden = () => {
     if (hiddenThinking > 0) {
@@ -1252,6 +1253,10 @@ function filterDisplayEvents(
     if (hiddenDiff > 0) {
       filtered.push({ kind: "muted", text: `Diff detail collapsed (${hiddenDiff}) · press F12` });
       hiddenDiff = 0;
+    }
+    if (hiddenTodo > 0) {
+      filtered.push({ kind: "muted", text: `Todo detail collapsed (${hiddenTodo}) · press F12` });
+      hiddenTodo = 0;
     }
   };
 
@@ -1268,6 +1273,11 @@ function filterDisplayEvents(
 
     if (isDiffEventKind(event.kind) && !expandedKinds.diff && isDiffDetailLine(event.text)) {
       hiddenDiff++;
+      continue;
+    }
+
+    if (event.kind === "todoDetail" && !expandedKinds.tool) {
+      hiddenTodo++;
       continue;
     }
 
@@ -1585,6 +1595,7 @@ function eventTextStyle(kind: RenderedAgentEventKind): { color?: string; dimColo
     diffAdd: { color: "green" },
     diffRemove: { color: "red" },
     diffContext: { color: "gray", dimColor: true },
+    todoDetail: { color: "gray", dimColor: true },
     context: { color: "gray", dimColor: true },
     muted: { color: "gray", dimColor: true }
   };

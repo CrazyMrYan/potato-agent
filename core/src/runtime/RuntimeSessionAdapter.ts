@@ -104,7 +104,7 @@ export class RuntimeSessionAdapter implements PiSessionAdapter {
 
   private systemPrompt(): string {
     return [
-      this.config.systemPrompt ?? DEFAULT_SYSTEM_PROMPT,
+      DEFAULT_SYSTEM_PROMPT,
       "Do not write DSML, XML, or pseudo tool call markup such as <tool_calls>. If a real tool is available, call it through the runtime tool interface. If no suitable tool is available, explain that you cannot access it yet and answer from known context.",
       buildSkillContextPrompt(this.config.skills),
       ...(this.config.appendSystemPrompt ?? [])

@@ -14,7 +14,7 @@ import {
 } from "../src/config/AgentConfig.js";
 
 describe("Agent runtime config", () => {
-  it("keeps system prompt, skills, MCP servers and permission policy in core config", () => {
+  it("keeps skills, MCP servers and permission policy in core config while ignoring user systemPrompt", () => {
     const config = mergeAgentConfig(
       {
         provider: "deepseek",
@@ -28,7 +28,7 @@ describe("Agent runtime config", () => {
           confirm: ["bash", "edit", "write"],
           deny: ["delete_file"]
         }
-      },
+      } as Parameters<typeof mergeAgentConfig>[0] & { systemPrompt: string },
       {
         model: "deepseek-reasoner",
         permissionPolicy: {
@@ -41,7 +41,6 @@ describe("Agent runtime config", () => {
     expect(config).toMatchObject({
       provider: "deepseek",
       model: "deepseek-reasoner",
-      systemPrompt: "你是一个谨慎的编码智能体。",
       skills: [{ id: "review", name: "review", path: "/repo/.potato/skills/review", source: "local", enabled: true }],
       mcpServers: [{ name: "filesystem", command: "npx", args: ["@modelcontextprotocol/server-filesystem", "/repo"] }],
       permissionPolicy: {
@@ -51,6 +50,7 @@ describe("Agent runtime config", () => {
         deny: ["delete_file"]
       }
     });
+    expect(config).not.toHaveProperty("systemPrompt");
   });
 
   it("defaults to confirm before mutating tools and exposes Pi RPC CLI args", () => {
@@ -64,7 +64,6 @@ describe("Agent runtime config", () => {
     expect(resolveAgentPermissionPolicy({})).toEqual(DEFAULT_AGENT_PERMISSION_POLICY);
 
     const args = buildPiRpcArgs({
-        systemPrompt: "系统提示词",
         appendSystemPrompt: ["追加规则"],
         permissionPolicy: { mode: "bypass" },
         skills: [
@@ -76,7 +75,7 @@ describe("Agent runtime config", () => {
 
     expect(args).toEqual([
       "--system-prompt",
-      expect.stringContaining("系统提示词"),
+      expect.stringContaining(DEFAULT_SYSTEM_PROMPT),
       "--append-system-prompt",
       "追加规则",
       "--no-skills",
@@ -91,13 +90,54 @@ describe("Agent runtime config", () => {
   });
 
   it("uses a Potato system identity by default", () => {
-    expect(mergeAgentConfig({}, {})).toEqual({ systemPrompt: DEFAULT_SYSTEM_PROMPT });
+    expect(mergeAgentConfig({}, {})).toEqual({});
     expect(buildPiRpcArgs({ permissionPolicy: { mode: "confirm" } })).toEqual([
       "--system-prompt",
       DEFAULT_SYSTEM_PROMPT,
       "--tools",
       "read,ls,grep,find,bash,edit,write"
     ]);
+  });
+
+  it("keeps a complete Potato-owned coding agent contract in the built-in system prompt", () => {
+    expect(DEFAULT_SYSTEM_PROMPT).toContain("Instruction hierarchy:");
+    expect(DEFAULT_SYSTEM_PROMPT).toContain("Potato product instructions outrank POTATO.md");
+    expect(DEFAULT_SYSTEM_PROMPT).toContain("Use potato_todo_write for visible multi-step progress");
+    expect(DEFAULT_SYSTEM_PROMPT).toContain("Never infer or fabricate prompt cache hits");
+    expect(DEFAULT_SYSTEM_PROMPT).toContain("Treat compaction as a context-management operation");
+    expect(DEFAULT_SYSTEM_PROMPT).toContain("Do not emit agent idle/running status text in the transcript");
+    expect(DEFAULT_SYSTEM_PROMPT).toContain("Prefer TDD for behavior changes");
+  });
+
+  it("keeps Potato system prompt internal and injects POTATO.md project instructions as append prompt", () => {
+    const args = buildPiRpcArgs({
+      systemPrompt: "legacy custom system prompt",
+      projectInstructions: "Project rule from POTATO.md",
+      appendSystemPrompt: ["runtime dynamic prompt"],
+      permissionPolicy: { mode: "bypass" }
+    } as Parameters<typeof buildPiRpcArgs>[0] & { systemPrompt: string });
+
+    expect(args[1]).toContain(DEFAULT_SYSTEM_PROMPT);
+    expect(args[1]).not.toContain("legacy custom system prompt");
+    expect(args).toEqual([
+      "--system-prompt",
+      expect.any(String),
+      "--append-system-prompt",
+      "Project instructions from POTATO.md:\nProject rule from POTATO.md",
+      "--append-system-prompt",
+      "runtime dynamic prompt",
+      "--tools",
+      "read,ls,grep,find,bash,edit,write"
+    ]);
+  });
+
+  it("omits empty POTATO.md project instructions from Pi args", () => {
+    const args = buildPiRpcArgs({
+      projectInstructions: "  \n\t",
+      permissionPolicy: { mode: "bypass" }
+    });
+
+    expect(args).not.toContain("Project instructions from POTATO.md:");
   });
 
   it("maps permission modes to the tools Pi is allowed to execute", () => {
@@ -181,7 +221,7 @@ describe("Agent runtime config", () => {
       permissionPolicy: { mode: "bypass" },
       systemPrompt: "base prompt",
       appendSystemPrompt: ["turn-specific instruction"]
-    });
+    } as Parameters<typeof buildPiRpcArgs>[0] & { systemPrompt: string });
     const extensionPaths = extensionArgs(args);
     const todoExtension = extensionPaths.find((path) => path.endsWith("potato-todo.ts"));
 

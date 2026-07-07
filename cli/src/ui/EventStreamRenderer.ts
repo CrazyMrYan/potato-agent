@@ -26,6 +26,7 @@ export type RenderedAgentEventKind =
   | "diffAdd"
   | "diffRemove"
   | "diffContext"
+  | "todoDetail"
   | "context"
   | "muted";
 
@@ -82,6 +83,10 @@ export class EventStreamRenderer {
 
     if (event.type === "diff.produced") {
       return [...this.flushEvents(), ...this.renderDiff(event.changeSet)].filter((item) => item.text.length > 0);
+    }
+
+    if (event.type === "todo.updated") {
+      return [...this.flushEvents(), ...this.renderTodoUpdate(event.todos)].filter((item) => item.text.length > 0);
     }
 
     return [...this.flushEvents(), this.renderImmediate(event)].filter((item) => item.text.length > 0);
@@ -215,6 +220,14 @@ export class EventStreamRenderer {
     return renderChangeSet(changeSet).map((line) => this.renderDiffLine(line));
   }
 
+  private renderTodoUpdate(todos: Array<{ content: string; status: string }>): RenderedAgentEvent[] {
+    const events: RenderedAgentEvent[] = [{ kind: "step", text: this.blue(formatTodoSummary(todos)) }];
+    if (this.streamDetails) {
+      events.push(...todos.map((todo) => ({ kind: "todoDetail" as const, text: this.dim(`  ${todoStatusMarker(todo.status)} ${todo.content}`) })));
+    }
+    return events;
+  }
+
   private renderDiffLine(line: RenderedDiffLine): RenderedAgentEvent {
     switch (line.kind) {
       case "header":
@@ -264,6 +277,12 @@ function formatTodoSummary(todos: Array<{ status: string }>): string {
   const inProgress = todos.filter((todo) => todo.status === "in_progress").length;
   const completed = todos.filter((todo) => todo.status === "completed").length;
   return `todo 已更新：${todos.length} 项 · ${inProgress} 进行中 · ${completed} 已完成`;
+}
+
+function todoStatusMarker(status: string): string {
+  if (status === "completed") return "✓";
+  if (status === "in_progress") return "●";
+  return "○";
 }
 
 function formatPromptCache(cachedTokens: number, inputTokens: number | undefined, cacheWriteTokens: number | undefined): string {

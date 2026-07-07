@@ -29,7 +29,6 @@ export function createTuiConfig(options: TuiCommandOptions = {}): AgentConfig {
     model: options.model,
     apiKey: options.apiKey,
     timeoutMs: options.timeoutMs,
-    systemPrompt: options.systemPrompt,
     appendSystemPrompt: options.appendSystemPrompt,
     skills: options.skills,
     mcpServers: options.mcpServers,

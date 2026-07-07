@@ -349,6 +349,49 @@ describe("AgentTui render", () => {
     expect(frame).not.toContain("agent idle");
   });
 
+  it("/details reveals todo item details for todo updates", async () => {
+    const workspacePath = await mkdtemp(join(tmpdir(), "coding-agent-tui-"));
+    const rendered = render(
+      React.createElement(AgentTui, {
+        config: {
+          workspacePath,
+          provider: "deepseek",
+          model: "deepseek-reasoner"
+        },
+        createSession: () => ({
+          async start() {},
+          async stop() {},
+          async *send() {
+            yield {
+              type: "todo.updated" as const,
+              taskId: "task_1",
+              todos: [
+                { content: "写失败测试", status: "completed" as const },
+                { content: "实现 Pi extension", status: "in_progress" as const },
+                { content: "补真实 Pi 验证", status: "pending" as const }
+              ]
+            };
+            yield { type: "task.finished" as const, taskId: "task_1", summary: "done" };
+          },
+          async approve() {}
+        })
+      })
+    );
+
+    rendered.stdin.write("task");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    rendered.stdin.write("\r");
+    await waitForFrame(rendered.lastFrame, "todo 已更新：3 项");
+    expect(rendered.lastFrame()).not.toContain("✓ 写失败测试");
+
+    rendered.stdin.write("/details");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    rendered.stdin.write("\r");
+    await waitForFrame(rendered.lastFrame, "✓ 写失败测试");
+    expect(rendered.lastFrame()).toContain("● 实现 Pi extension");
+    expect(rendered.lastFrame()).toContain("○ 补真实 Pi 验证");
+  });
+
   it("renders the full transcript without keyboard-controlled scroll paging", async () => {
     const workspacePath = await mkdtemp(join(tmpdir(), "coding-agent-tui-"));
     const rendered = render(
