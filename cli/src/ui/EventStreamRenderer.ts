@@ -1,11 +1,14 @@
-import type { AgentEvent } from "@potato/protocol";
+import type { AgentEvent, ChangeSet } from "@potato/protocol";
 import pc from "picocolors";
-import { renderChangeSetLines } from "./DiffRenderer.js";
+import { renderChangeSet, type RenderedDiffLine } from "./DiffRenderer.js";
 import { renderMarkdownText } from "./MarkdownRenderer.js";
 
 export type EventStreamRendererOptions = {
   colors?: boolean;
   maxToolOutputLength?: number;
+  streamText?: boolean;
+  streamDetails?: boolean;
+  collectThinking?: boolean;
 };
 
 export type RenderedAgentEventKind =
@@ -18,24 +21,37 @@ export type RenderedAgentEventKind =
   | "warning"
   | "error"
   | "diff"
+  | "diffFile"
+  | "diffHunk"
+  | "diffAdd"
+  | "diffRemove"
+  | "diffContext"
   | "context"
   | "muted";
 
 export type RenderedAgentEvent = {
   kind: RenderedAgentEventKind;
   text: string;
+  replacePrevious?: boolean;
 };
 
 export class EventStreamRenderer {
   private pendingText = "";
   private pendingThinking = "";
   private lastRenderedAssistantText = "";
+  private streamedAssistantText = "";
   private readonly colors: boolean;
   private readonly maxToolOutputLength: number;
+  private readonly streamText: boolean;
+  private readonly streamDetails: boolean;
+  private readonly collectThinking: boolean;
 
   constructor(options: EventStreamRendererOptions = {}) {
     this.colors = options.colors ?? true;
     this.maxToolOutputLength = options.maxToolOutputLength ?? 120;
+    this.streamText = options.streamText ?? false;
+    this.streamDetails = options.streamDetails ?? false;
+    this.collectThinking = options.collectThinking ?? false;
   }
 
   render(event: AgentEvent): string {
@@ -47,12 +63,25 @@ export class EventStreamRenderer {
   renderEvent(event: AgentEvent): RenderedAgentEvent[] {
     if (event.type === "assistant.delta") {
       if (event.channel === "thinking") {
+        if (this.streamDetails || this.collectThinking) {
+          return [{ kind: "thinking", text: this.dim(event.text) }];
+        }
         this.pendingThinking += event.text;
         return [];
       }
 
+      if (this.streamText) {
+        this.streamedAssistantText += event.text;
+        this.lastRenderedAssistantText = normalizeRenderedText(this.streamedAssistantText);
+        return [{ kind: "text", text: event.text }];
+      }
+
       this.pendingText += event.text;
       return [];
+    }
+
+    if (event.type === "diff.produced") {
+      return [...this.flushEvents(), ...this.renderDiff(event.changeSet)].filter((item) => item.text.length > 0);
     }
 
     return [...this.flushEvents(), this.renderImmediate(event)].filter((item) => item.text.length > 0);
@@ -105,10 +134,13 @@ export class EventStreamRenderer {
       case "subagent.failed":
         return { kind: "error", text: this.red(`SubAgent failed: ${event.name} ${event.error.message}`) };
       case "diff.produced":
-        return { kind: "diff", text: this.magenta(renderChangeSetLines(event.changeSet).join("\n")) };
+        return { kind: "diff", text: this.renderDiff(event.changeSet).map((line) => line.text).join("\n") };
       case "context.budget":
         return { kind: "context", text: formatContextBudget(event.usedTokens, event.maxTokens, event.ratio, event.compactAtRatio) };
       case "context.compacted":
+        if (event.originalTokens === 0 && event.compactedTokens === 0) {
+          return { kind: "muted", text: this.dim(`context compact skipped: ${event.summary}`) };
+        }
         return { kind: "warning", text: this.yellow(`context compacted ${event.originalTokens} -> ${event.compactedTokens} tokens`) };
       case "verification.started":
         return { kind: "tool", text: this.gray(event.command) };
@@ -119,6 +151,7 @@ export class EventStreamRenderer {
       case "task.failed":
         return { kind: "error", text: this.red(`${event.error.code} ${event.error.message}`) };
     }
+    return assertNever(event);
   }
 
   private formatToolOutput(output: string): string {
@@ -127,6 +160,11 @@ export class EventStreamRenderer {
 
   private renderTaskFinished(summary: string): RenderedAgentEvent {
     const text = renderMarkdownText(summary, { colors: this.colors });
+    if (this.streamText && this.streamedAssistantText.trim()) {
+      this.lastRenderedAssistantText = normalizeRenderedText(text);
+      this.streamedAssistantText = "";
+      return { kind: "text", text, replacePrevious: true };
+    }
     if (text && normalizeRenderedText(text) === this.lastRenderedAssistantText) {
       return { kind: "text", text: "" };
     }
@@ -165,6 +203,27 @@ export class EventStreamRenderer {
   private dim(value: string): string {
     return this.colors ? pc.dim(value) : value;
   }
+
+  private renderDiff(changeSet: ChangeSet): RenderedAgentEvent[] {
+    return renderChangeSet(changeSet).map((line) => this.renderDiffLine(line));
+  }
+
+  private renderDiffLine(line: RenderedDiffLine): RenderedAgentEvent {
+    switch (line.kind) {
+      case "header":
+        return { kind: "diff", text: this.magenta(line.text) };
+      case "file":
+        return { kind: "diffFile", text: this.blue(line.text) };
+      case "hunk":
+        return { kind: "diffHunk", text: this.dim(line.text) };
+      case "add":
+        return { kind: "diffAdd", text: this.green(line.text) };
+      case "remove":
+        return { kind: "diffRemove", text: this.red(line.text) };
+      case "context":
+        return { kind: "diffContext", text: this.dim(line.text) };
+    }
+  }
 }
 
 function compactInline(value: string): string {
@@ -173,6 +232,10 @@ function compactInline(value: string): string {
 
 function normalizeRenderedText(value: string): string {
   return value.replace(/\s+/g, " ").trim();
+}
+
+function assertNever(value: never): never {
+  throw new Error(`Unhandled event: ${JSON.stringify(value)}`);
 }
 
 function joinParts(first: string, second: string | undefined): string {

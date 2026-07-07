@@ -9,8 +9,11 @@
 - `core/` 是 `@potato/core`，承载 Agent 编排、配置、会话、Pi 适配、trace、diff、skill、MCP、SubAgent 和权限边界。
 - `cli/` 是 `@potato/cli`，承载 commander 命令、Ink TUI、输入框、菜单和终端渲染。
 - Pi 是当前底层 agent 执行引擎；当前真实路径是 `cli -> core -> Pi RPC -> Pi`。
-- 当前 Pi RPC 路径可以透传 system prompt、append system prompt、skills 和工具 allow/deny，但不能声明 core 已完全接管工具执行边界。
-- 真正由本项目接管 MCP 注入和工具二次确认，需要后续 Pi SDK session 或本项目 runtime adapter。
+- 当前 Pi RPC 路径可以透传 system prompt、append system prompt、skills、工具 allow/deny 和 Potato 自动生成的 Pi extensions。
+- 手动审批通过 Potato Pi extension 实现：拦截 `bash/edit/write`，在执行前用 Pi extension UI confirm 展示确认和 diff preview。
+- MCP 通过 Potato Pi extension bridge 注入为 Pi custom tools，当前只覆盖 stdio MCP。
+- SubAgent 通过 Pi 官方 subagent extension 实现，Potato 负责把配置生成到 `.pi/agents/*.md`。
+- Vercel AI SDK runtime 保留为内部实验 adapter，不再作为默认执行路径。
 
 ## 工作区布局
 
@@ -65,9 +68,9 @@ pnpm build:npm:cli
 - 表格渲染：已复用 `marked-terminal` 的表格能力。不要再手写 Markdown 表格解析。
 - Diff 渲染：已改为基于 `parse-diff` 解析 unified diff，再输出终端友好的文本。后续如要语法高亮或 side-by-side，可继续叠加 `cli-highlight` 或 Ink 专用组件。
 - Token 估算：已从 `chars / 4` 改为 `gpt-tokenizer`。后续多 provider 精准计数仍应接模型供应商 tokenizer。
-- 上下文压缩：当前是接口和事件闭环，不是真正模型摘要。后续应接入模型 summarizer，并把历史消息裁剪/替换为 summary。
-- 模型适配：桌面端前评估 OpenAI-compatible、LiteLLM、Vercel AI SDK、OpenRouter。当前 Pi RPC 不急于绑定这些。
-- MCP 注入：当前只做配置检测，不应虚标为已接管。后续应基于 Pi SDK session 或独立 runtime adapter 实现真实注入。
+- 上下文压缩：默认 Pi RPC session 优先调用 Pi 原生 `compact(customInstructions?)`。项目内 heuristic compaction 只作为 adapter 不支持 native compact 时的 fallback。
+- 模型适配：CLI/core 默认走 Pi RPC。Vercel AI SDK + `@ai-sdk/openai-compatible` 保留为内部实验 adapter；桌面端前继续评估 LiteLLM、OpenRouter、OpenAI Agents SDK 等是否适合更高层编排。
+- MCP 注入：默认 Pi RPC 通过 Potato 生成的 Pi MCP bridge extension 把 stdio MCP tools 注册成 Pi custom tools。内部实验 runtime 仍保留 `McpToolRegistry`，可把 MCP tools 映射进 AI SDK tools。
 - 终端快捷键和输入：当前 Ink TUI 自行处理编辑、补全、快捷键和历史回填。若交互复杂度继续上升，需要评估专门的 readline/editor 抽象，避免在 `AgentTui.tsx` 里堆状态机。
 - 联网搜索：DeepSeek API key 能调用模型不等于已具备联网搜索。开源优先方案是 SearXNG + MCP/search tool；托管方案可评估 Brave Search、Tavily、Exa、Firecrawl。Potato 必须通过明确的 web-search tool 或 MCP 注入暴露联网状态，不能把 provider 官网客户端能力等同于 API runtime 能力。
 - Agent Loop / SubAgent：当前是项目内自定义抽象，不是行业标准协议。后续如要标准化，应评估 OpenAI Agents SDK/Responses tool loop、LangGraph、AutoGen/CrewAI 等可验证 runtime 模型；当前不能标记为标准实现。
@@ -76,13 +79,24 @@ pnpm build:npm:cli
 
 - TUI transcript 已取消应用内 PageUp/PageDown/上下键滚动截断，改为完整输出，滚动交给终端自身。
 - Skills 现在同时通过 `--skill <path>` 传给 Pi，并写入 system prompt 的可见 skill context，包含 enabled/disabled/source/path，避免只靠隐式注入。
-- Runtime capability report 已区分 Pi RPC 当前能力和标准 runtime/sdk 目标能力：Pi RPC 不虚标 MCP/tool interception；runtime 目标对齐 Vercel AI SDK，sdk 目标对齐 Model Context Protocol SDK。
+- Runtime capability report 已区分默认 Pi RPC 能力和内部实验 runtime 能力：Pi RPC 能力来自 Pi core + Potato extensions；runtime 对齐 Vercel AI SDK，MCP tools 对齐 Model Context Protocol SDK。
 
 仍不能标记为完成的标准化：
 
-- 当前默认执行路径仍是 `cli -> core -> Pi RPC -> Pi`，不是 Vercel AI SDK runtime。
-- MCP 仍只在 runtime/sdk capability 中标为标准目标；Pi RPC 路径继续报告 adapter unsupported，不能真实注入 MCP tools。
+- 已新增 `RuntimeSessionAdapter` / `RuntimeTaskAdapter`，但它们是内部实验路径，不是默认路径。
+- MCP stdio server tools 已在 Pi RPC bridge 和实验 runtime `McpToolRegistry` 两条路径打通；当前尚未支持 streamable HTTP/SSE MCP transport。
+- `runtime/sdk` 仍只应作为内部实验/测试路径，不应暴露为普通用户必须理解的运行模式。
 - AgentLoop/SubAgent 仍是项目内抽象；要变成标准 runtime 需要引入可执行的 graph/agent runtime，而不是只改类型名。
+
+## 依赖审计备忘
+
+当前依赖审计结论：
+
+- 没有发现可安全删除的生产依赖。
+- `cli/package.json` 不直接声明 `@earendil-works/pi-coding-agent`。发布脚本 external 掉 Pi，并从 `core/package.json` 读取 Pi 版本写进 `.release/npm/cli/package.json` 的 dependencies；发布包运行时仍必须能解析 Pi。
+- `core` 里的 `ai` 和 `@ai-sdk/openai-compatible` 只服务内部实验 runtime；如果后续决定彻底放弃实验 runtime，才能连同 `RuntimeSessionAdapter`、`RuntimeTaskAdapter`、`McpToolRegistry` 的 AI SDK 映射一起删除。
+- `@modelcontextprotocol/sdk` 同时服务实验 `McpToolRegistry` 和生成的 Pi MCP bridge extension；当前不能删除。
+- `gpt-tokenizer` 当前用于 context budget 估算；后续如果完全改用 Pi session stats 或 provider tokenizer，可再评估替换。
 
 ## 当前上下文压缩机制
 
@@ -104,7 +118,7 @@ pnpm build:npm:cli
 
 - 现在不是模型摘要，也不是历史消息真实裁剪。
 - 当前 `compact()` 生成一个固定结构的 heuristic summary，包含 task、workspace、state 和 next。
-- `/compact` 可以主动触发同一套 heuristic compaction 事件，但仍不是外部成熟压缩方案。
+- `/compact` 在默认 Pi RPC session 下优先调用 Pi 原生 compact；非 Pi/native compact 不可用时才触发 heuristic compaction 事件。
 - token 使用量会在 session 内累计 prompt 和 final output，因此下一轮会看到 `used/max tokens` 增长；百分比在大窗口下可能仍显示 `<1%`。
 - 这个阶段主要用于打通 AgentLoop、AgentSession、trace、TUI 展示和验证路径。
 
@@ -128,6 +142,7 @@ pnpm build:npm:cli
   - 是否继续 Pi RPC。
   - 是否切 Pi SDK session。
   - 是否拆 `potato-runtime` 子进程。
+  - 是否保留当前内部实验 Vercel AI SDK runtime。
 - UI 能力：
   - 可视化 diff。
   - 事件时间线。
@@ -186,8 +201,8 @@ docs: record validation result
 
 仍需继续：
 
-- Pi RPC 路径不能虚标 core 已接管最终工具权限。
-- MCP 仍需从配置检测走向真实注入。
+- Pi RPC 路径的手动审批由 Potato extension 实现，但仍要继续提升 diff preview 和拒绝后的暂停体验。
+- MCP 已有 stdio bridge 注入，仍需补 streamable HTTP/SSE transport、错误展示和工具列表可视化。
 - diff、trace、approval 的展示质量需要继续提升。
 
 ### M4.6：Ink v7 TUI 迁移

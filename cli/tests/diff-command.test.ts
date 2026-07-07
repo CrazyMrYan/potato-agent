@@ -16,7 +16,7 @@ describe("diff command", () => {
     });
 
     expect(write).toHaveBeenCalledWith("diff: 1 file changed");
-    expect(write).toHaveBeenCalledWith("modified src/a.ts");
+    expect(write).toHaveBeenCalledWith("M modified src/a.ts");
     expect(write).toHaveBeenCalledWith("  patch");
   });
 
@@ -43,7 +43,7 @@ describe("diff command", () => {
 
     expect(write.mock.calls.map((call) => call[0])).toEqual([
       "diff: 1 file changed",
-      "modified src/a.ts",
+      "M modified src/a.ts",
       "  @@ -1 +1 @@",
       "- old",
       "+ new"

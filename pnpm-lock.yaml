@@ -26,9 +26,6 @@ importers:
 
   cli:
     dependencies:
-      '@earendil-works/pi-coding-agent':
-        specifier: ^0.80.3
-        version: 0.80.3(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(ws@8.21.0)(zod@4.4.3)
       '@inquirer/prompts':
         specifier: ^8.5.2
         version: 8.5.2(@types/node@26.1.0)

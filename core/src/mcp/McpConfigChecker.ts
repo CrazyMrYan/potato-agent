@@ -4,7 +4,7 @@ import type { AgentMcpServerConfig } from "../config/AgentConfig.js";
 
 const execFileAsync = promisify(execFile);
 
-export type McpCheckStatus = "ok" | "missing-command" | "missing-env" | "startup-failed" | "adapter-unsupported";
+export type McpCheckStatus = "ok" | "missing-command" | "missing-env" | "startup-failed";
 
 export type McpCheckResult = {
   name: string;
@@ -41,14 +41,6 @@ export class McpConfigChecker {
         name: server.name,
         status: "missing-env",
         message: `Missing environment variables: ${missingEnv.join(", ")}`
-      };
-    }
-
-    if ((this.dependencies.adapter ?? "rpc") === "rpc") {
-      return {
-        name: server.name,
-        status: "adapter-unsupported",
-        message: "MCP is configured, but the current adapter does not support MCP injection."
       };
     }
 

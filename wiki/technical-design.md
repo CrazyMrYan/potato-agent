@@ -232,11 +232,18 @@ bash、edit、write 默认需要确认。
 默认不启用完全放开模式。
 ```
 
-这套配置的最终执行点应该在 `AgentOrchestrator -> Tool Boundary`。当前 RPC 验证阶段只能把 Pi CLI 已支持的字段透传给 Pi，不能把 MCP 和二次确认策略误认为已经完整落地。
+长期目标仍然是让 `AgentOrchestrator -> Tool Boundary` 成为统一权限边界。当前默认执行路径已经切回 Pi RPC，因此实际执行点分成两层：
+
+- Pi CLI/RPC 原生支持的 system prompt、skills、tools allow/deny 直接透传给 Pi。
+- Potato 产品层能力通过自动生成的 Pi extensions 注入，包括手动审批、MCP bridge 和 SubAgent。
 
 Skills 由 `SkillManager` 管理。内置 skills 默认出现在 TUI `/skill` 列表中，用户可启用/禁用；外部 skills 可从本地路径或 Git 仓库安装到 workspace 配置。只有 `enabled !== false` 的 skill 会注入 Pi RPC 参数。
 
-MCP server 配置由 `McpConfigChecker` 做静态和启动检测。当前 Pi RPC adapter 不支持真实 MCP 注入时，检测结果必须明确返回 `adapter-unsupported`。
+MCP server 配置由 `McpConfigChecker` 做静态和启动检测。默认 Pi RPC 路径通过 `potato-mcp-bridge.ts` 把 stdio MCP server 的 tools 注册成 Pi custom tools，工具名为 `<server>__<tool>`。当前尚未覆盖 streamable HTTP/SSE MCP transport。
+
+手动模式不是 readonly。它允许写入类工具进入候选执行，但 `potato-approval.ts` 会在 `tool_call` hook 中拦截 `bash/edit/write`，展示命令或 diff preview，由用户确认后才继续。
+
+SubAgent 通过 Pi 官方 subagent extension 实现。Potato 将 `SubAgentConfig` 写入 `.pi/agents/*.md`，subagent tool 会启动独立 Pi 子进程，拥有隔离上下文和受限工具集合。
 
 ### RuntimePiAdapter
 

@@ -2,6 +2,7 @@ import type { AgentEvent, RunTaskInput } from "@potato/protocol";
 import { RpcClient, type RpcClientOptions } from "@earendil-works/pi-coding-agent";
 import { buildPiRpcArgs } from "../config/AgentConfig.js";
 import { PiEventMapper, type RawPiEvent } from "./PiEventMapper.js";
+import { buildPiProcessEnv } from "./buildPiProcessEnv.js";
 import type { PiAdapter, PiAdapterOptions } from "./PiAdapter.js";
 import { resolvePiCliPath } from "./resolvePiCliPath.js";
 
@@ -29,7 +30,7 @@ export class PiRpcAdapter implements PiAdapter {
     const client = this.createClient({
       cliPath: this.resolveCliPath(),
       cwd: this.options.workspacePath,
-      env: { [this.options.apiKeyEnvName]: this.options.apiKey },
+      env: buildPiProcessEnv(this.options.apiKeyEnvName, this.options.apiKey),
       provider: this.options.provider,
       model: this.options.model,
       args: buildPiRpcArgs(this.options)

@@ -12,7 +12,6 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@earendil-works/pi-coding-agent": "^0.80.3",
     "@inquirer/prompts": "^8.5.2",
     "@potato/core": "workspace:*",
     "@potato/protocol": "workspace:*",

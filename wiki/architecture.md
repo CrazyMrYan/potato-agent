@@ -17,9 +17,22 @@
 
 ## 核心决策
 
-直接使用 Pi 作为底层智能体执行引擎，但不把产品能力全部塞进 Pi。
+直接使用 Pi RPC 作为默认底层智能体执行引擎，但不把产品能力全部塞进 Pi。
 
-本项目自己的核心能力放在智能体编排层。它位于 CLI 和 Pi 之间，负责任务生命周期、权限、上下文策略、验证策略、diff 策略和运行记录。
+本项目自己的核心能力放在智能体编排层。它位于 CLI 和 Pi 之间，负责任务生命周期、权限、上下文策略、验证策略、diff 策略、MCP bridge、SubAgent 配置和运行记录。
+
+默认运行路径：
+
+```text
+@potato/cli -> @potato/core -> Pi RPC -> Pi core tools/session/compaction
+                         \-> Potato-generated Pi extensions
+```
+
+Potato 通过自动生成的 Pi extensions 注入产品层能力：
+
+- `potato-approval.ts`：手动模式下拦截 `bash/edit/write`，执行前展示确认和 diff preview。
+- `potato-mcp-bridge.ts`：把 stdio MCP server tools 注册成 Pi custom tools。
+- Pi 官方 `subagent` extension：Potato 把 `SubAgentConfig` 物化为 `.pi/agents/*.md`，由独立 Pi 子进程执行。
 
 第一阶段宿主 UI 使用 CLI。CLI 不需要精致界面，只需要让智能体循环可观察：
 
@@ -62,7 +75,9 @@ Pi 执行引擎
 flowchart TB
     User["开发者"] --> CLI["CLI 验证壳<br/>任务输入 / 进度展示 / diff 展示"]
     CLI --> Orchestrator["智能体编排层<br/>任务 / 权限 / 上下文 / 验证 / trace"]
-    Orchestrator --> Pi["Pi 执行引擎<br/>推理 / 规划 / 工具调用 / agent loop"]
+    Orchestrator --> Pi["Pi RPC 执行引擎<br/>推理 / session / tools / compaction"]
+    Orchestrator --> Ext["Potato Pi Extensions<br/>approval / MCP bridge / subagent"]
+    Ext --> Pi
     Pi --> Tools["工具运行层"]
     Tools --> FS["文件系统<br/>读取 / 写入 / Patch"]
     Tools --> Search["代码搜索<br/>文件匹配 / 内容检索"]
@@ -95,6 +110,8 @@ flowchart LR
     CLI --> Protocol["@potato/protocol<br/>事件 / 任务 / 审批 / diff 类型"]
     Core --> Protocol
     Core --> Pi["@earendil-works/pi-coding-agent<br/>Pi RPC / 底层 potato 执行"]
+    Core --> McpSdk["@modelcontextprotocol/sdk<br/>stdio MCP bridge"]
+    Core --> AiSdk["Vercel AI SDK<br/>内部实验 runtime"]
 
     Protocol -. "不依赖业务实现" .-> None1["无下游依赖"]
 ```
@@ -105,6 +122,7 @@ flowchart LR
 - `core` 不能依赖 `cli`。
 - `cli` 可以依赖 `core` 和 `protocol`，但不直接接管 Pi 细节。
 - Pi 相关实现收敛在 `core/src/pi/`，CLI 只通过 `AgentSessionFactory`、`AgentSession` 或命令 API 使用。
+- 默认 adapter 是 Pi RPC。`runtime/sdk` 只作为内部实验路径保留，不能要求普通用户理解或选择。
 
 ## protocol 独立架构
 
@@ -139,10 +157,11 @@ flowchart TB
     Skills["skills/SkillManager"] --> SessionFactory
     SubAgents["subagent/<br/>SubAgentManager / SubAgentConfig"] --> SessionFactory
 
-    SessionFactory --> Session["session/AgentSession<br/>start / send / approve / pause"]
+    SessionFactory --> Session["session/AgentSession<br/>start / send / approve / pause / compact"]
     Session --> PiAdapter["pi/PiSessionAdapter"]
     PiAdapter --> PiMapper["pi/PiEventMapper"]
     PiMapper --> ProtocolEvents["@potato/protocol events"]
+    PiAdapter --> PiRuntime["pi/PotatoPiRuntime<br/>生成 approval / MCP / subagent extensions"]
 
     Gateway["gateway/<br/>AgentGateway / LocalAgentGateway"] --> Orchestrator["orchestrator/AgentOrchestrator"]
     Orchestrator --> Loop["loop/AgentLoop<br/>lifecycle / trace / diff / final events"]
@@ -150,22 +169,67 @@ flowchart TB
     Loop --> Diff["diff/GitDiffService"]
 
     Tools["tools/ToolBoundary"] --> Config
-    MCP["mcp/McpConfigChecker"] --> Config
-    Runtime["runtime/RuntimeCapabilityReporter"] --> Orchestrator
+    MCP["mcp/<br/>McpConfigChecker / McpToolRegistry"] --> Config
+    Runtime["runtime/<br/>RuntimeCapabilityReporter / experimental adapters"] --> Orchestrator
 ```
 
 主要职责：
 
 - `config/`：模型、workspace、工具权限、skills、MCP、SubAgent 等运行配置。
 - `session/`：长期会话抽象，负责 start/send/stop/approval/pause。
-- `pi/`：Pi RPC 适配和原始事件映射，隔离第三方执行引擎。
+- `pi/`：Pi RPC 适配、原始事件映射、Pi CLI 路径解析、Pi 子进程 env 处理、Potato Pi extension 生成。
 - `loop/` 和 `orchestrator/`：统一任务生命周期，围绕 adapter 事件补齐 trace、diff、最终状态。
 - `trace/`：JSONL 任务审计记录。
 - `diff/`：Git 工作区变更检测和 patch 读取。
 - `skills/`：内置和外部 skill 的发现、安装、启用/禁用。
 - `subagent/`：单 SubAgent 选择和配置合并。
-- `mcp/`：MCP 配置检测。
+- `mcp/`：MCP 配置检测；默认 Pi RPC 路径通过生成的 Pi extension bridge 注入 stdio MCP tools，实验 runtime 通过 `McpToolRegistry` 映射到 AI SDK tools。
 - `tools/`：工具权限边界抽象。
+- `runtime/`：内部实验 adapter，基于 Vercel AI SDK / OpenAI-compatible provider。当前不是默认执行路径。
+
+## 默认执行路径
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant CLI as @potato/cli
+    participant Core as @potato/core
+    participant Pi as Pi RPC
+    participant Ext as Potato Pi Extensions
+    participant Tools as Pi Tools / MCP / SubAgent
+
+    U->>CLI: 输入任务
+    CLI->>Core: AgentSessionFactory.create(config)
+    Core->>Core: SkillManager / SubAgentManager 合并配置
+    Core->>Core: PotatoPiRuntime 生成 extensions 和 .pi/agents
+    Core->>Pi: 启动 RpcClient(--system-prompt, --skill, --tools, --extension)
+    Pi->>Ext: 加载 approval / MCP bridge / subagent extensions
+    CLI->>Pi: prompt(message)
+    Pi->>Tools: read / grep / bash / edit / write / MCP tool / subagent
+    Tools-->>Pi: tool result
+    Pi-->>Core: RPC events
+    Core-->>CLI: AgentEvent
+    CLI-->>U: transcript / approval / diff / final
+```
+
+## 依赖边界
+
+当前生产依赖按职责划分：
+
+| 包 | 关键依赖 | 用途 |
+|---|---|---|
+| `protocol` | 无运行时依赖 | 类型契约 |
+| `core` | `@earendil-works/pi-coding-agent` | 默认执行底座、RPC client、Pi extension 路径 |
+| `core` | `@modelcontextprotocol/sdk` | stdio MCP 检测和 bridge |
+| `core` | `ai`、`@ai-sdk/openai-compatible` | 内部实验 runtime 和 MCP tool 映射 |
+| `core` | `gpt-tokenizer` | context budget token 估算 |
+| `cli` | `commander`、`ink`、`react` | CLI 和 TUI |
+| `cli` | `marked`、`marked-terminal` | Markdown 终端渲染 |
+| `cli` | `parse-diff` | unified diff 解析 |
+| `cli` | `picocolors` | 命令输出颜色 |
+| release package | `@earendil-works/pi-coding-agent` | 从 `core/package.json` 继承到 `.release/npm/cli/package.json`，因 bundle external Pi |
+
+最近依赖扫描没有发现可安全删除的生产依赖。`core` 里的 AI SDK 相关依赖只服务内部实验 runtime；如果后续决定彻底放弃该路径，才可以连同相关源码和测试一起删除。
 
 ## cli 独立架构
 

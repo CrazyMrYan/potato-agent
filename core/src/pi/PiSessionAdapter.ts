@@ -4,12 +4,15 @@ import { buildPiRpcArgs } from "../config/AgentConfig.js";
 import { PiEventMapper, type RawPiEvent } from "./PiEventMapper.js";
 import type { PiAdapterOptions } from "./PiAdapter.js";
 import { resolvePiCliPath } from "./resolvePiCliPath.js";
+import { buildPiProcessEnv } from "./buildPiProcessEnv.js";
 
 export type PiSessionAdapter = {
+  readonly name?: "rpc" | "runtime" | "sdk";
   start(): Promise<void>;
   stop(): Promise<void>;
   send(prompt: string): AsyncIterable<AgentEvent>;
   respondToApproval?(requestId: string, approved: boolean): Promise<void>;
+  compact?(customInstructions?: string): Promise<{ summary: string; originalTokens?: number; compactedTokens?: number }>;
 };
 
 type PiSessionAdapterDependencies = {
@@ -25,9 +28,11 @@ export type PiSessionClientLike = {
   getLastAssistantText(): Promise<string | null>;
   getStderr(): string;
   respondToExtensionUi?(response: RpcExtensionUIResponse): Promise<void>;
+  compact?(customInstructions?: string): Promise<unknown>;
 };
 
 export class PiRpcSessionAdapter implements PiSessionAdapter {
+  readonly name = "rpc";
   private client?: PiSessionClientLike;
 
   constructor(
@@ -43,7 +48,7 @@ export class PiRpcSessionAdapter implements PiSessionAdapter {
     const client = this.createClient({
       cliPath: resolvePiCliPath(),
       cwd: this.options.workspacePath,
-      env: { [this.options.apiKeyEnvName]: this.options.apiKey },
+      env: buildPiProcessEnv(this.options.apiKeyEnvName, this.options.apiKey),
       provider: this.options.provider,
       model: this.options.model,
       args: buildPiRpcArgs(this.options)
@@ -64,6 +69,14 @@ export class PiRpcSessionAdapter implements PiSessionAdapter {
       id: requestId,
       confirmed: approved
     });
+  }
+
+  async compact(customInstructions?: string): Promise<{ summary: string; originalTokens?: number; compactedTokens?: number }> {
+    const client = this.requireClient();
+    if (!client.compact) {
+      throw new Error("Pi RPC client does not expose native compaction.");
+    }
+    return normalizeCompactionResult(await client.compact(customInstructions));
   }
 
   async *send(prompt: string): AsyncIterable<AgentEvent> {
@@ -126,6 +139,31 @@ export class PiRpcSessionAdapter implements PiSessionAdapter {
 
     return this.client;
   }
+}
+
+function normalizeCompactionResult(result: unknown): { summary: string; originalTokens?: number; compactedTokens?: number } {
+  const record = result && typeof result === "object" ? (result as Record<string, unknown>) : {};
+  return {
+    summary:
+      pickString(record, ["summary", "text", "message"]) ??
+      (Object.keys(record).length > 0 ? JSON.stringify(record, null, 2) : "Pi context compacted."),
+    originalTokens: pickNumber(record, ["originalTokens", "beforeTokens", "tokensBefore"]),
+    compactedTokens: pickNumber(record, ["compactedTokens", "afterTokens", "tokensAfter"])
+  };
+}
+
+function pickString(record: Record<string, unknown>, keys: string[]): string | undefined {
+  for (const key of keys) {
+    if (typeof record[key] === "string") return record[key];
+  }
+  return undefined;
+}
+
+function pickNumber(record: Record<string, unknown>, keys: string[]): number | undefined {
+  for (const key of keys) {
+    if (typeof record[key] === "number") return record[key];
+  }
+  return undefined;
 }
 
 function resolveFinalSummary(

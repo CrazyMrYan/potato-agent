@@ -15,7 +15,7 @@ export function renderChangeSet(changeSet: ChangeSet): RenderedDiffLine[] {
 
   const lines: RenderedDiffLine[] = [{ kind: "header", text: `diff: ${changeSet.files.length} ${changeSet.files.length === 1 ? "file" : "files"} changed` }];
   for (const file of changeSet.files) {
-    lines.push({ kind: "file", text: `${file.status} ${file.path}` });
+    lines.push({ kind: "file", text: `${statusPrefix(file.status)} ${file.status} ${file.path}` });
     if (file.diff) {
       lines.push(...renderPatch(file.diff));
     }
@@ -63,4 +63,19 @@ function renderFallbackPatchLine(line: string): RenderedDiffLine {
   if (line.startsWith("-") && !line.startsWith("---")) return { kind: "remove", text: `- ${line.slice(1)}` };
   if (line.startsWith("@@")) return { kind: "hunk", text: `  ${line}` };
   return { kind: "context", text: `  ${line}` };
+}
+
+function statusPrefix(status: string): string {
+  switch (status) {
+    case "added":
+      return "A";
+    case "modified":
+      return "M";
+    case "deleted":
+      return "D";
+    case "renamed":
+      return "R";
+    default:
+      return "?";
+  }
 }

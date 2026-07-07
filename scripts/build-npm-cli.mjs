@@ -33,6 +33,7 @@ await build({
 await chmod(join(distDir, "cli.js"), 0o755);
 
 const cliPackage = JSON.parse(await readFile(join(repoRoot, "cli", "package.json"), "utf8"));
+const corePackage = JSON.parse(await readFile(join(repoRoot, "core", "package.json"), "utf8"));
 const releasePackage = {
   name: cliPackage.name,
   version: cliPackage.version,
@@ -45,7 +46,7 @@ const releasePackage = {
     "dist",
     "README.md"
   ],
-  dependencies: pickDependencies(cliPackage.dependencies, [
+  dependencies: pickDependencies(corePackage.dependencies, [
     "@earendil-works/pi-coding-agent"
   ]),
   engines: {

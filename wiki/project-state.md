@@ -8,7 +8,8 @@
 
 - CLI 默认 TUI、`run`、`chat`、`diff`、`trace`。
 - TUI slash command：`/mode`、`/skill`、`/mcp`、`/agent`、`/diff`、`/trace`。
-- Core 基础能力：`AgentLoop`、`SkillManager`、`McpConfigChecker`、`SubAgentManager`、trace、diff、权限策略。
+- Core 基础能力：`AgentLoop`、`AgentSession`、`SkillManager`、`McpConfigChecker`、`SubAgentManager`、trace、diff、权限策略。
+- 当前默认执行底座已经切回 Pi RPC。Potato 在 Pi 之上自动注入产品层 extensions：manual approval、MCP bridge、SubAgent。
 - M6 第一批体验能力：context budget/自动压缩事件、Markdown 正文渲染、统一 diff renderer、thinking/tool/diff 展开收起、network capability 展示。
 - Manual 权限模式已开始支持写入前确认、拒绝暂停和 diff 预览，但展示质量还需要继续提升。
 - CLI npm 发布链路已建立，目标包是 `@potato/cli`，启动命令是 `potato`。
@@ -20,10 +21,12 @@
 ## 当前边界
 
 - Pi 是当前底层 agent 执行引擎，真实路径是 `cli -> core -> Pi RPC -> Pi`。
-- 当前 Pi RPC 路径可以透传 system prompt、append system prompt、skills 和工具 allow/deny。
-- 不能声明 core 已完全接管 Pi RPC 的最终工具执行边界。
-- MCP 目前以配置检测为主，不能虚标为已经真实注入。
-- 桌面端启动前再评估通用模型适配层，当前不把 LiteLLM、Vercel AI SDK 或 OpenRouter 绑定进 core。
+- 当前 Pi RPC 路径可以透传 system prompt、append system prompt、skills、工具 allow/deny 和 Potato runtime extensions。
+- Manual approval 由 Potato 生成的 Pi extension 拦截 `bash/edit/write`，通过 Pi extension UI confirm 实现。它不是 Pi 原生权限弹窗，但是真实执行前 hook。
+- MCP 由 Potato 生成的 `potato-mcp-bridge` Pi extension 注入为 Pi custom tools，工具名为 `<server>__<tool>`。当前只覆盖 stdio MCP。
+- SubAgent 复用 Pi 官方 subagent extension，Potato 把 `SubAgentConfig` 物化为 `.pi/agents/*.md`，由独立 Pi 子进程执行。
+- Vercel AI SDK runtime 仍保留为内部实验路径，不是默认执行路径。
+- 桌面端启动前再评估 LiteLLM、OpenRouter、OpenAI Agents SDK、Vercel AI SDK 等更高层模型/agent 适配层。
 
 ## M6 目标：Core 体验闭环
 
@@ -43,7 +46,9 @@ M6 的目标不是继续堆功能入口，而是让 core 的关键能力在 CLI/
 - 已新增 `ContextBudgetManager` 和 `HeuristicContextBudgetManager`。
 - `AgentLoop`、`AgentSession` 会发出 `context.budget`，超过阈值时发出 `context.compacted`。
 - trace 已记录 `context.budget` 和 `context.compacted`。
-- 当前压缩是 heuristic 摘要入口，后续需要接入真实模型摘要和历史消息裁剪。
+- 默认 Pi RPC 会话的 `/compact` 优先调用 Pi RPC 原生 `compact(customInstructions?)`。
+- 当 adapter 不支持 native compact 时，才 fallback 到 heuristic 摘要入口。
+- 后续需要把 UI 上的 context budget 和 Pi 真实 session stats 更精确地对齐。
 
 建议模块：
 
@@ -213,16 +218,47 @@ M6 保持以下原则：
 
 CLI/TUI 必须明确展示当前权限模式。
 
+## 依赖审计快照
+
+最近一次依赖引用扫描结论：
+
+- `core` 的生产依赖均有当前源码引用：
+  - `@earendil-works/pi-coding-agent`：Pi RPC、Pi CLI 路径解析、Pi subagent extension 路径解析。
+  - `@modelcontextprotocol/sdk`：`McpToolRegistry` 和生成的 Pi MCP bridge extension。
+  - `ai`、`@ai-sdk/openai-compatible`：内部实验 `RuntimeSessionAdapter` / `RuntimeTaskAdapter` 和 MCP tool 映射。
+  - `gpt-tokenizer`：context budget token 估算。
+  - `@potato/protocol`：跨层事件、任务、审批、diff 类型。
+- `cli` 的生产依赖均有当前源码引用，或属于发布期必要运行依赖：
+  - `@inquirer/prompts`：`chat` 兼容命令。
+  - `commander`、`ink`、`react`：CLI/TUI。
+  - `marked`、`marked-terminal`：Markdown 终端渲染。
+  - `parse-diff`：统一 diff renderer。
+  - `picocolors`：事件输出颜色。
+- `cli/package.json` 不直接声明 `@earendil-works/pi-coding-agent`。npm 发布脚本从 `core/package.json` 读取 Pi 版本，并写入 `.release/npm/cli/package.json`，因为 bundle external 掉 Pi，发布包运行时必须能解析 Pi 包。
+- 暂未发现可以安全删除的 package 依赖。
+- 已清理不再返回的 `McpCheckStatus` 死状态：`adapter-unsupported`。
+
 ## M6 非目标
 
 M6 不做以下事情：
 
 - 不启动桌面端开发。
-- 不把 LiteLLM、Vercel AI SDK 或 OpenRouter 绑定进 core。
-- 不承诺 Pi RPC 下 MCP 已经真实注入。
+- 不把 LiteLLM、OpenRouter、OpenAI Agents SDK 绑定为默认 core runtime。
+- 不把 Vercel AI SDK runtime 作为默认路径；它只保留为内部实验 adapter。
+- 不承诺 MCP 已覆盖所有 transport；当前只覆盖 stdio MCP bridge。
 - 不承诺 core 已完全接管 Pi RPC 的最终工具执行权限。
 - 不把 CLI 做成复杂参数平台。
 - 不实现完整图形 diff，只做终端可读 diff。
+
+## M7 计划想法
+
+M7 先记录几个下一阶段的主要想法，不在这里展开成详细设计：
+
+- 知识库：维护知识库作为项目事实来源，让架构、边界、阶段状态和关键决策更稳定地沉淀下来。
+- 工作区全局记忆：希望 agent 在同一 workspace 下能逐步复用长期信息，减少每次任务都从头解释项目背景。也可与设置全局。
+- 中止操作：希望除了暂停之外，再补一个更明确的任务中止能力，让用户能直接结束当前任务。
+
+这一阶段先放方向，不提前把实现结构、交互细节和底层机制写死，后面再按真实验证情况收敛。
 
 ## 阶段文档
 

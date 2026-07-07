@@ -1,7 +1,24 @@
 import { describe, expect, it } from "vitest";
 import { EventStreamRenderer } from "../src/ui/EventStreamRenderer.js";
+import pc from "picocolors";
 
 describe("EventStreamRenderer", () => {
+  it("streams assistant text deltas immediately while still rendering the final markdown block", () => {
+    const renderer = new EventStreamRenderer({ colors: false, streamText: true });
+
+    expect(renderer.render({ type: "assistant.delta", taskId: "task_1", channel: "text", text: "我是" })).toBe("我是");
+    expect(renderer.render({ type: "assistant.delta", taskId: "task_1", channel: "text", text: " Potato" })).toBe(" Potato");
+    expect(renderer.renderEvent({ type: "task.finished", taskId: "task_1", summary: "我是 Potato" })).toEqual([
+      { kind: "text", text: "我是 Potato", replacePrevious: true }
+    ]);
+  });
+
+  it("renders thinking deltas as running detail events when detail output is enabled", () => {
+    const renderer = new EventStreamRenderer({ colors: false, streamDetails: true });
+
+    expect(renderer.render({ type: "assistant.delta", taskId: "task_1", channel: "thinking", text: "checking" })).toBe("checking");
+  });
+
   it("renders potato events without hard-coded Chinese prefixes around model content", () => {
     const renderer = new EventStreamRenderer({ colors: false });
     const lines = [
@@ -116,5 +133,39 @@ describe("EventStreamRenderer", () => {
         compactedTokens: 120
       })
     ).toBe("context compacted 820 -> 120 tokens");
+    expect(
+      renderer.render({
+        type: "context.compacted",
+        taskId: "task_1",
+        summary: "Nothing to compact (session too small).",
+        originalTokens: 0,
+        compactedTokens: 0
+      })
+    ).toBe("context compact skipped: Nothing to compact (session too small).");
+  });
+
+  it("colors diff lines by semantic kind instead of tinting the whole block uniformly", () => {
+    const renderer = new EventStreamRenderer({ colors: true });
+    const output = renderer.render({
+      type: "diff.produced",
+      taskId: "task_1",
+      changeSet: {
+        files: [
+          {
+            path: "src/a.ts",
+            status: "modified",
+            diff: "diff --git a/src/a.ts b/src/a.ts\n@@ -1 +1 @@\n-old\n+new"
+          }
+        ]
+      }
+    });
+
+    expect(output.split("\n")).toEqual([
+      pc.magenta("diff: 1 file changed"),
+      pc.blue("M modified src/a.ts"),
+      pc.dim("  @@ -1 +1 @@"),
+      pc.red("- old"),
+      pc.green("+ new")
+    ]);
   });
 });

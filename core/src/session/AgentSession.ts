@@ -22,6 +22,10 @@ export class AgentSession {
     return this.adapter.stop();
   }
 
+  adapterName(): "rpc" | "runtime" | "sdk" | "unknown" {
+    return this.adapter.name ?? "unknown";
+  }
+
   async *send(prompt: string): AsyncIterable<AgentEvent> {
     let input: RunTaskInput | undefined;
 
@@ -106,10 +110,66 @@ export class AgentSession {
   }
 
   async *compactContext(reason: "manual" | "automatic" = "manual"): AsyncIterable<AgentEvent> {
+    const taskId = `${reason}_compact`;
+    if (this.adapter.compact) {
+      try {
+        const result = await this.adapter.compact(`${reason} context compaction`);
+        const compacted = {
+          summary: result.summary,
+          originalTokens: result.originalTokens ?? 0,
+          compactedTokens: result.compactedTokens ?? 0
+        };
+        const event: AgentEvent = {
+          type: "context.compacted",
+          taskId,
+          summary: compacted.summary,
+          originalTokens: compacted.originalTokens,
+          compactedTokens: compacted.compactedTokens
+        };
+        await this.trace({ timestamp: nowIso(), taskId, kind: "context.compacted", result: compacted });
+        await this.trace({ timestamp: nowIso(), taskId, kind: "event", event });
+        yield event;
+        return;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (isNothingToCompactError(message)) {
+          const event: AgentEvent = {
+            type: "context.compacted",
+            taskId,
+            summary: normalizeNothingToCompactMessage(message),
+            originalTokens: 0,
+            compactedTokens: 0
+          };
+          await this.trace({
+            timestamp: nowIso(),
+            taskId,
+            kind: "context.compacted",
+            result: {
+              summary: event.summary,
+              originalTokens: event.originalTokens,
+              compactedTokens: event.compactedTokens
+            }
+          });
+          await this.trace({ timestamp: nowIso(), taskId, kind: "event", event });
+          yield event;
+          return;
+        }
+        yield {
+          type: "task.failed",
+          taskId,
+          error: {
+            code: "UNKNOWN_ERROR",
+            message
+          }
+        };
+        return;
+      }
+    }
+
     if (!this.contextBudget) {
       yield {
         type: "task.failed",
-        taskId: `${reason}_compact`,
+        taskId,
         error: {
           code: "UNKNOWN_ERROR",
           message: "当前会话不支持主动压缩。"
@@ -119,7 +179,7 @@ export class AgentSession {
     }
 
     const input: RunTaskInput = {
-      taskId: `${reason}_compact`,
+      taskId,
       workspacePath: this.workspacePath,
       prompt: `${reason} context compaction`,
       mode: "run",
@@ -170,4 +230,16 @@ export class AgentSession {
     await this.trace({ timestamp: nowIso(), taskId: input.taskId, kind: "event", event: compactedEvent });
     yield compactedEvent;
   }
+}
+
+function isNothingToCompactError(message: string): boolean {
+  return /nothing to compact|session too small/i.test(message);
+}
+
+function normalizeNothingToCompactMessage(message: string): string {
+  const trimmed = message.trim();
+  if (!trimmed) {
+    return "Nothing to compact.";
+  }
+  return trimmed.endsWith(".") ? trimmed : `${trimmed}.`;
 }

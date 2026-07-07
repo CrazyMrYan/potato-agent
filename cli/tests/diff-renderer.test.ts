@@ -13,6 +13,6 @@ describe("DiffRenderer", () => {
           }
         ]
       })
-    ).toEqual(["diff: 1 file changed", "modified src/a.ts", "  @@ -1 +1 @@", "- old", "+ new"]);
+    ).toEqual(["diff: 1 file changed", "M modified src/a.ts", "  @@ -1 +1 @@", "- old", "+ new"]);
   });
 });

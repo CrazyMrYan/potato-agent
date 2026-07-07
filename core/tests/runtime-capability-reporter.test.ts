@@ -2,17 +2,17 @@ import { describe, expect, it } from "vitest";
 import { RuntimeCapabilityReporter } from "../src/runtime/RuntimeCapabilityReporter.js";
 
 describe("RuntimeCapabilityReporter", () => {
-  it("reports RPC capabilities without claiming tool interception", () => {
+  it("reports RPC capabilities provided by Potato Pi extensions", () => {
     expect(new RuntimeCapabilityReporter().forAdapter("rpc")).toEqual({
       adapter: "rpc",
       systemPrompt: true,
       skills: true,
-      mcpServers: false,
+      mcpServers: true,
       network: "unknown",
       toolAllowDeny: true,
-      toolInterception: false,
-      toolBoundaryApproval: false,
-      notes: expect.arrayContaining([expect.stringContaining("Pi RPC")])
+      toolInterception: true,
+      toolBoundaryApproval: true,
+      notes: expect.arrayContaining([expect.stringContaining("Pi RPC"), expect.stringContaining("Potato injects")])
     });
   });
 

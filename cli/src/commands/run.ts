@@ -9,6 +9,7 @@ import {
   type DiffService,
   type PiAdapter,
   PiRpcAdapter,
+  RuntimeTaskAdapter,
   resolveDefaultWorkspacePath,
   resolvePiAdapterOptions,
   type TraceStore
@@ -20,6 +21,7 @@ export class RenderedTaskFailedError extends Error {
 }
 
 export type RunCommandOptions = {
+  adapter?: "rpc" | "runtime" | "sdk";
   provider?: string;
   model?: string;
   apiKey?: string;
@@ -34,7 +36,10 @@ export type RunCommandOptions = {
 };
 
 export function createAdapter(options: RunCommandOptions): PiAdapter {
-  return new PiRpcAdapter(resolvePiAdapterOptions(options));
+  if (!options.adapter || options.adapter === "rpc") {
+    return new PiRpcAdapter(resolvePiAdapterOptions(options));
+  }
+  return new RuntimeTaskAdapter(options);
 }
 
 export async function runCommand(prompt: string, options: RunCommandOptions = {}): Promise<void> {

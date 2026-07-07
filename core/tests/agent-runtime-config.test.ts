@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -129,12 +129,49 @@ describe("Agent runtime config", () => {
   it("materializes manual approval extension with file diff preview", () => {
     const workspace = mkdtempSync(join(tmpdir(), "coding-agent-approval-"));
     const args = buildPiRpcArgs({ workspacePath: workspace, permissionPolicy: { mode: "confirm" } });
-    const extensionPath = args.at(args.indexOf("--extension") + 1);
+    const extensionPaths = extensionArgs(args);
+    const extensionPath = extensionPaths.find((path) => path.endsWith("potato-approval.ts"));
 
     expect(extensionPath).toBeTruthy();
     const source = readFileSync(extensionPath as string, "utf8");
     expect(source).toContain("formatWritePreview");
     expect(source).toContain("simpleUnifiedDiff");
+  });
+
+  it("loads Potato product extensions into Pi RPC", () => {
+    const workspace = mkdtempSync(join(tmpdir(), "potato-pi-extensions-"));
+    const args = buildPiRpcArgs({
+      workspacePath: workspace,
+      permissionPolicy: { mode: "confirm" },
+      mcpServers: [{ name: "filesystem", command: "npx", args: ["@modelcontextprotocol/server-filesystem", workspace] }],
+      subAgents: [
+        {
+          id: "reviewer",
+          name: "Reviewer",
+          description: "Review code for correctness.",
+          systemPrompt: "Review only. Do not modify files.",
+          tools: { allow: ["read", "grep", "find", "ls"] },
+          permissionPolicy: { mode: "readonly" },
+          enabled: true
+        }
+      ]
+    });
+
+    const extensionPaths = extensionArgs(args);
+    expect(extensionPaths.some((path) => path.endsWith("potato-approval.ts"))).toBe(true);
+    expect(extensionPaths.some((path) => path.endsWith("potato-mcp-bridge.ts"))).toBe(true);
+    expect(extensionPaths.some((path) => path.endsWith("subagent/index.ts"))).toBe(true);
+    expect(args[1]).toContain("Use the subagent tool with agentScope=\"project\"");
+
+    const agentPath = join(workspace, ".pi", "agents", "reviewer.md");
+    expect(existsSync(agentPath)).toBe(true);
+    expect(readFileSync(agentPath, "utf8")).toContain("name: reviewer");
+    expect(readFileSync(agentPath, "utf8")).toContain("tools: read, grep, find, ls");
+
+    const mcpSource = readFileSync(extensionPaths.find((path) => path.endsWith("potato-mcp-bridge.ts")) as string, "utf8");
+    expect(mcpSource).toContain("new Client");
+    expect(mcpSource).toContain("pi.registerTool");
+    expect(mcpSource).toContain("${server.name}__${mcpTool.name}");
   });
 
   it("disables Pi skill auto-discovery when runtime skills are managed explicitly", () => {
@@ -181,3 +218,13 @@ describe("Agent runtime config", () => {
     expect(args[1]).toContain("Potato managed skills:");
   });
 });
+
+function extensionArgs(args: string[]): string[] {
+  const paths: string[] = [];
+  for (let index = 0; index < args.length; index++) {
+    if (args[index] === "--extension" && args[index + 1]) {
+      paths.push(args[index + 1]);
+    }
+  }
+  return paths;
+}

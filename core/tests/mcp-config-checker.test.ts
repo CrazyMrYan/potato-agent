@@ -2,10 +2,11 @@ import { describe, expect, it, vi } from "vitest";
 import { McpConfigChecker } from "../src/mcp/McpConfigChecker.js";
 
 describe("McpConfigChecker", () => {
-  it("reports adapter unsupported for Pi RPC even when config is otherwise valid", async () => {
+  it("checks Pi RPC MCP bridge configs instead of treating RPC as unsupported", async () => {
+    const start = vi.fn(async () => ({ ok: true }));
     const checker = new McpConfigChecker({
       commandExists: async () => true,
-      start: async () => ({ ok: true }),
+      start,
       env: { API_KEY: "secret" },
       adapter: "rpc"
     });
@@ -14,9 +15,10 @@ describe("McpConfigChecker", () => {
       checker.check({ name: "test", command: "node", args: ["server.js"], env: { API_KEY: "API_KEY" } })
     ).resolves.toEqual({
       name: "test",
-      status: "adapter-unsupported",
-      message: "MCP is configured, but the current adapter does not support MCP injection."
+      status: "ok",
+      message: "MCP server configuration is valid."
     });
+    expect(start).toHaveBeenCalledWith({ command: "node", args: ["server.js"], env: { API_KEY: "secret" } });
   });
 
   it("reports missing commands", async () => {

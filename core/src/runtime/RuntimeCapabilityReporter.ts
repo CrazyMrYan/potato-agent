@@ -7,14 +7,14 @@ export class RuntimeCapabilityReporter {
         adapter: "rpc",
         systemPrompt: true,
         skills: true,
-        mcpServers: false,
+        mcpServers: true,
         network: "unknown",
         toolAllowDeny: true,
-        toolInterception: false,
-        toolBoundaryApproval: false,
+        toolInterception: true,
+        toolBoundaryApproval: true,
         notes: [
-          "Pi RPC accepts system prompt, appended system prompt, skills, and tool allow/deny through CLI args.",
-          "Pi RPC still owns final tool execution, so core ToolBoundary approval is not enforced on this path."
+          "Pi RPC is the default execution core for built-in coding tools, sessions, skills, and compaction.",
+          "Potato injects approval, MCP bridge, and subagent behavior through Pi extensions."
         ]
       };
     }

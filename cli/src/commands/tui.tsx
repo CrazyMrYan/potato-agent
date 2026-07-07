@@ -50,7 +50,7 @@ export async function runTuiCommand(
     ((workspacePath: string) => {
       return ensureDefaultAgentConfig(new FileAgentConfigStore(workspacePath));
     });
-  const storedConfig = await loadConfig(runtimeConfig.workspacePath ?? process.cwd());
+  const storedConfig = sanitizeUserFacingConfig(await loadConfig(runtimeConfig.workspacePath ?? process.cwd()));
   const config = mergeAgentConfig(storedConfig, runtimeConfig);
 
   if (dependencies.render) {
@@ -71,4 +71,9 @@ export async function runTuiCommand(
         saveConfig: (nextConfig: AgentConfig) => saveConfig(nextConfig.workspacePath ?? process.cwd(), nextConfig)
       })
   );
+}
+
+function sanitizeUserFacingConfig(config: AgentConfig): AgentConfig {
+  const { adapter: _adapter, ...rest } = config;
+  return rest;
 }

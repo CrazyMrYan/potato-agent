@@ -3,12 +3,11 @@ import { execFile } from "node:child_process";
 import { readdir } from "node:fs/promises";
 import { join, relative } from "node:path";
 import { promisify } from "node:util";
-import { Box, Text, useApp, useInput } from "ink";
+import { Box, Static, Text, useApp, useInput } from "ink";
 import {
   GitDiffService,
   JsonlTraceStore,
   McpConfigChecker,
-  RuntimeCapabilityReporter,
   SkillManager,
   SubAgentManager,
   type AgentConfig,
@@ -21,9 +20,9 @@ import {
   type SubAgentConfig,
   type TraceStore
 } from "@potato/core";
-import type { ApprovalRequest } from "@potato/protocol";
+import type { ApprovalRequest, ChangeSet } from "@potato/protocol";
 import { formatTraceEntry } from "../commands/trace.js";
-import { renderChangeSetLines } from "./DiffRenderer.js";
+import { renderChangeSet, type RenderedDiffLine } from "./DiffRenderer.js";
 import { EventStreamRenderer, type RenderedAgentEvent, type RenderedAgentEventKind } from "./EventStreamRenderer.js";
 import {
   applyCompletion,
@@ -79,6 +78,7 @@ const commandOptions = [
   { command: "/workspace", label: "/workspace", description: "显示当前工作区" },
   { command: "/diff", label: "/diff", description: "显示当前 Git 变更" },
   { command: "/trace", label: "/trace", description: "显示最近 trace" },
+  { command: "/details", label: "/details", description: "设置 thinking/tool/diff 默认展开" },
   { command: "/compact", label: "/compact", description: "主动压缩当前上下文" },
   { command: "/plan", label: "/plan", description: "进入计划模式，不直接改代码" },
   { command: "/mode", label: "/mode", description: "打开权限模式选择" },
@@ -122,7 +122,12 @@ export function AgentTui(props: AgentTuiProps): React.ReactElement {
   const [selectedSubAgent, setSelectedSubAgent] = useState(0);
   const [pendingApproval, setPendingApproval] = useState<ApprovalRequest | undefined>();
   const [pendingApiKey, setPendingApiKey] = useState(props.config.apiKey ?? "");
-  const [expandedKinds, setExpandedKinds] = useState({ thinking: false, tool: false, diff: false });
+  const [expandedKinds, setExpandedKinds] = useState(() => ({
+    thinking: props.config.ui?.details?.thinking ?? false,
+    tool: props.config.ui?.details?.tool ?? false,
+    diff: props.config.ui?.details?.diff ?? false
+  }));
+  const [activity, setActivity] = useState<"idle" | "thinking" | "responding" | "tool">("idle");
   const [contextStatus, setContextStatus] = useState<string | undefined>();
   const [promptHistory, setPromptHistory] = useState<string[]>([]);
   const [historyIndex, setHistoryIndex] = useState<number | undefined>();
@@ -132,7 +137,6 @@ export function AgentTui(props: AgentTuiProps): React.ReactElement {
   const sessionRef = useRef<AgentSession | undefined>(undefined);
   const workspacePath = config.workspacePath ?? process.cwd();
   const permissionMode = config.permissionPolicy?.mode ?? "confirm";
-  const runtimeCapability = useMemo(() => new RuntimeCapabilityReporter().forAdapter("rpc"), []);
   const skillManager = props.skillManager ?? new SkillManager(workspacePath);
   const mcpChecker = props.mcpChecker ?? new McpConfigChecker({ adapter: "rpc" });
   const subAgentManager = props.subAgentManager ?? new SubAgentManager();
@@ -175,7 +179,7 @@ export function AgentTui(props: AgentTuiProps): React.ReactElement {
     if (filtered.length === 0) {
       return;
     }
-    setEvents((current) => [...current, ...filtered]);
+    setEvents((current) => appendCoalescedEvents(current, filtered));
   }, []);
 
   const updateEditor = useCallback((nextEditor: PromptEditorState) => {
@@ -329,7 +333,8 @@ export function AgentTui(props: AgentTuiProps): React.ReactElement {
       appendEvent({ kind: "muted", text: "diff: 当前没有 Git 变更。" });
       return;
     }
-    appendEvents(renderChangeSetLines(changeSet).map((line) => ({ kind: "diff" as const, text: line })));
+    setExpandedKinds((current) => ({ ...current, diff: true }));
+    appendEvents(buildDiffEvents(changeSet));
   }, [appendEvent, appendEvents, props.diffService, workspacePath]);
 
   const showTrace = useCallback(async () => {
@@ -361,7 +366,7 @@ export function AgentTui(props: AgentTuiProps): React.ReactElement {
     }
 
     const renderer = new EventStreamRenderer({ colors: false });
-    appendEvent({ kind: "muted", text: "context compact requested: heuristic summary, not external compaction yet." });
+    appendEvent({ kind: "muted", text: "context compact requested." });
     for await (const event of activeSession.compactContext("manual")) {
       appendEvents(renderer.renderEvent(event));
     }
@@ -373,6 +378,16 @@ export function AgentTui(props: AgentTuiProps): React.ReactElement {
     appendEvent({ kind: "muted", text: "PLAN MODE：先产出计划并等待确认，不直接修改文件。" });
   }, [appendEvent]);
 
+  const setDetailsExpanded = useCallback(
+    async (details: { thinking: boolean; tool: boolean; diff: boolean }) => {
+      setExpandedKinds(details);
+      const nextConfig: AgentConfig = { ...config, ui: { ...config.ui, details } };
+      setConfig(nextConfig);
+      await props.saveConfig?.(nextConfig);
+    },
+    [config, props]
+  );
+
   const sendPrompt = useCallback(
     async (prompt: string) => {
       if (busy) {
@@ -382,6 +397,7 @@ export function AgentTui(props: AgentTuiProps): React.ReactElement {
 
       setBusy(true);
       appendEvent({ kind: "user", text: prompt });
+      appendEvent({ kind: "muted", text: "agent running" });
 
       try {
         const runtimeConfig = applyInlineSkillMentions(await buildRuntimeConfig(), prompt);
@@ -396,8 +412,9 @@ export function AgentTui(props: AgentTuiProps): React.ReactElement {
           sessionRef.current = activeSession;
         }
 
-        const renderer = new EventStreamRenderer({ colors: false });
+        const renderer = new EventStreamRenderer({ colors: false, streamText: false, streamDetails: expandedKinds.thinking, collectThinking: true });
         for await (const event of activeSession.send(prompt)) {
+          setActivity(activityForEvent(event));
           if (event.type === "approval.requested") {
             setPendingApproval(event.request);
             setMode("approval");
@@ -409,9 +426,11 @@ export function AgentTui(props: AgentTuiProps): React.ReactElement {
         appendEvent({ kind: "error", text: `Agent 会话失败：${error instanceof Error ? error.message : String(error)}` });
       } finally {
         setBusy(false);
+        setActivity("idle");
+        appendEvent({ kind: "muted", text: "agent idle" });
       }
     },
-    [appendEvent, appendEvents, buildRuntimeConfig, busy, props]
+    [appendEvent, appendEvents, buildRuntimeConfig, busy, expandedKinds.thinking, props]
   );
 
   const respondToApproval = useCallback(
@@ -523,6 +542,13 @@ export function AgentTui(props: AgentTuiProps): React.ReactElement {
         return;
       }
 
+      if (prompt === "/details") {
+        const expanded = !(expandedKinds.tool && expandedKinds.thinking && expandedKinds.diff);
+        await setDetailsExpanded({ thinking: expanded, tool: expanded, diff: expanded });
+        appendEvent({ kind: "success", text: `details ${expanded ? "expanded" : "collapsed"}` });
+        return;
+      }
+
       if (prompt === "/compact") {
         await compactContext();
         return;
@@ -536,7 +562,7 @@ export function AgentTui(props: AgentTuiProps): React.ReactElement {
       setPromptHistory((current) => [...current.filter((item) => item !== prompt), prompt].slice(-50));
       await sendPrompt(prompt);
     },
-    [app, appendEvent, compactContext, enterModelProviderMode, openAgentMenu, openMcpMenu, openPermissionMode, openPlanMode, openSkillList, sendPrompt, showDiff, showTrace, workspacePath]
+    [app, appendEvent, compactContext, enterModelProviderMode, expandedKinds, openAgentMenu, openMcpMenu, openPermissionMode, openPlanMode, openSkillList, sendPrompt, setDetailsExpanded, showDiff, showTrace, workspacePath]
   );
 
   useEffect(() => {
@@ -609,20 +635,18 @@ export function AgentTui(props: AgentTuiProps): React.ReactElement {
     }
 
     if (mode === "chat" && key.ctrl && input === "t") {
-      setExpandedKinds((current) => ({ ...current, thinking: !current.thinking }));
+      void setDetailsExpanded({ ...expandedKinds, thinking: !expandedKinds.thinking });
       return;
     }
 
     if (mode === "chat" && (isDetailToggleKey(input, key) || (key.ctrl && input === "o"))) {
-      setExpandedKinds((current) => {
-        const expanded = !(current.tool && current.thinking && current.diff);
-        return { thinking: expanded, tool: expanded, diff: expanded };
-      });
+      const expanded = !(expandedKinds.tool && expandedKinds.thinking && expandedKinds.diff);
+      void setDetailsExpanded({ thinking: expanded, tool: expanded, diff: expanded });
       return;
     }
 
     if (mode === "chat" && key.ctrl && input === "d") {
-      setExpandedKinds((current) => ({ ...current, diff: !current.diff }));
+      void setDetailsExpanded({ ...expandedKinds, diff: !expandedKinds.diff });
       return;
     }
 
@@ -845,68 +869,51 @@ export function AgentTui(props: AgentTuiProps): React.ReactElement {
   });
 
   return (
-    <Box flexDirection="column" paddingX={1}>
-      <Box borderStyle="round" borderColor={busy ? "yellow" : "cyan"} paddingX={1} flexDirection="column">
-        <Box justifyContent="space-between" flexWrap="wrap">
-          <Text bold color="cyan">Agent</Text>
-          <Text color={busy ? "yellow" : "green"}>status {busy ? "running" : "idle"}</Text>
+    <>
+      <Static items={displayEvents} key={detailsStaticKey(expandedKinds)}>
+        {(event, index) => <EventLine event={event} key={`${index}-${event.kind}-${event.text}`} />}
+      </Static>
+      <Box flexDirection="column" paddingX={1}>
+        <Box marginTop={1} paddingX={1} flexDirection="column">
+          <CommandMenu mode={mode} selectedCommand={selectedCompletion} commands={commandMatches} />
+          <ValueCompletionMenu
+            title="FILES"
+            mode={mode}
+            expectedMode="file-completion"
+            selected={selectedCompletion}
+            values={fileMatches}
+            loading={fileCandidatesLoading}
+            query={completionContext?.type === "file" ? completionContext.query : ""}
+            loadedCount={fileCandidates.length}
+          />
+          <ValueCompletionMenu
+            title="SKILLS"
+            mode={mode}
+            expectedMode="skill-completion"
+            selected={selectedCompletion}
+            values={skillMatches}
+            loading={skillCandidatesLoading}
+            query={completionContext?.type === "skill" ? completionContext.query : ""}
+            loadedCount={skillCandidates.length}
+          />
+          <ModelPicker mode={mode} selectedProvider={selectedProvider} selectedModel={selectedModel} pendingApiKey={pendingApiKey} />
+          <PermissionPicker mode={mode} selectedPermission={selectedPermission} />
+          <SkillList mode={mode} skills={skillItems} selectedSkill={selectedSkill} skillInstallInput={skillInstallInput} />
+          <McpMenu mode={mode} servers={config.mcpServers ?? []} results={mcpResults} />
+          <AgentMenu mode={mode} agents={subAgentItems} selectedSubAgent={selectedSubAgent} activeSubAgentId={config.activeSubAgentId ?? "default"} />
+          <PlanMode mode={mode} />
+          <ApprovalPrompt mode={mode} request={pendingApproval} />
         </Box>
-        <Box gap={2} flexWrap="wrap">
-          <Text dimColor>model <Text color="white">{formatModel(config)}</Text></Text>
-          <Text dimColor>workspace <Text color="white">{workspacePath}</Text></Text>
-          <Text dimColor>mode <Text color="white">{formatPermissionMode(permissionMode)}</Text></Text>
-          <Text dimColor>subagent <Text color="white">{config.activeSubAgentId ?? "default"}</Text></Text>
-          <Text dimColor>network <Text color="white">{runtimeCapability.network}</Text></Text>
+
+        <Box paddingX={1}>
+          <Text dimColor>{contextStatus ?? "context waiting for first turn"}</Text>
         </Box>
-        <Box gap={2} flexWrap="wrap">
-          <Text dimColor>commands <Text color="white">/model /workspace /diff /trace /compact /plan /mode /skill /mcp /agent /exit</Text></Text>
-          <Text dimColor>keys <Text color="white">Ctrl+P F12 details Ctrl+C</Text></Text>
+
+        <Box marginTop={1} borderStyle="single" borderColor={mode === "chat" ? "gray" : "cyan"} paddingX={1}>
+          {isPromptEditingMode(mode) ? <PromptLine editor={editor} /> : <Text color="cyan">{secondaryPrompt(mode, skillInstallInput)}</Text>}
         </Box>
       </Box>
-
-      <Box marginTop={1} paddingX={1} flexDirection="column">
-        <Text dimColor>transcript</Text>
-        {displayEvents.map((event, index) => (
-          <EventLine event={event} key={`${index}-${event.kind}-${event.text}`} />
-        ))}
-        <CommandMenu mode={mode} selectedCommand={selectedCompletion} commands={commandMatches} />
-        <ValueCompletionMenu
-          title="FILES"
-          mode={mode}
-          expectedMode="file-completion"
-          selected={selectedCompletion}
-          values={fileMatches}
-          loading={fileCandidatesLoading}
-          query={completionContext?.type === "file" ? completionContext.query : ""}
-          loadedCount={fileCandidates.length}
-        />
-        <ValueCompletionMenu
-          title="SKILLS"
-          mode={mode}
-          expectedMode="skill-completion"
-          selected={selectedCompletion}
-          values={skillMatches}
-          loading={skillCandidatesLoading}
-          query={completionContext?.type === "skill" ? completionContext.query : ""}
-          loadedCount={skillCandidates.length}
-        />
-        <ModelPicker mode={mode} selectedProvider={selectedProvider} selectedModel={selectedModel} pendingApiKey={pendingApiKey} />
-        <PermissionPicker mode={mode} selectedPermission={selectedPermission} />
-        <SkillList mode={mode} skills={skillItems} selectedSkill={selectedSkill} skillInstallInput={skillInstallInput} />
-        <McpMenu mode={mode} servers={config.mcpServers ?? []} results={mcpResults} />
-        <AgentMenu mode={mode} agents={subAgentItems} selectedSubAgent={selectedSubAgent} activeSubAgentId={config.activeSubAgentId ?? "default"} />
-        <PlanMode mode={mode} />
-        <ApprovalPrompt mode={mode} request={pendingApproval} />
-      </Box>
-
-      <Box paddingX={1}>
-        <Text dimColor>{contextStatus ?? "context waiting for first turn"}</Text>
-      </Box>
-
-      <Box marginTop={1} borderStyle="single" borderColor={mode === "chat" ? "gray" : "cyan"} paddingX={1}>
-        {isPromptEditingMode(mode) ? <PromptLine editor={editor} /> : <Text color="cyan">{secondaryPrompt(mode, skillInstallInput)}</Text>}
-      </Box>
-    </Box>
+    </>
   );
 }
 
@@ -1189,6 +1196,17 @@ function EventLine({ event }: { event: RenderedAgentEvent }): React.ReactElement
   return <Text {...eventTextStyle(event.kind)} wrap="wrap">{event.text}</Text>;
 }
 
+function detailsStaticKey(expandedKinds: { thinking: boolean; tool: boolean; diff: boolean }): string {
+  return `${expandedKinds.thinking ? "T" : "t"}${expandedKinds.tool ? "O" : "o"}${expandedKinds.diff ? "D" : "d"}`;
+}
+
+export function buildDiffEvents(changeSet: ChangeSet): RenderedAgentEvent[] {
+  return renderChangeSet(changeSet).map((line) => ({
+    kind: diffLineEventKind(line.kind),
+    text: line.text
+  }));
+}
+
 function filterDisplayEvents(
   events: RenderedAgentEvent[],
   expandedKinds: { thinking: boolean; tool: boolean; diff: boolean }
@@ -1197,6 +1215,21 @@ function filterDisplayEvents(
   let hiddenThinking = 0;
   let hiddenTool = 0;
   let hiddenDiff = 0;
+
+  const flushHidden = () => {
+    if (hiddenThinking > 0) {
+      filtered.push({ kind: "muted", text: `Thinking collapsed (${hiddenThinking}) · press F12` });
+      hiddenThinking = 0;
+    }
+    if (hiddenTool > 0) {
+      filtered.push({ kind: "muted", text: `Tool output collapsed (${hiddenTool}) · press F12` });
+      hiddenTool = 0;
+    }
+    if (hiddenDiff > 0) {
+      filtered.push({ kind: "muted", text: `Diff detail collapsed (${hiddenDiff}) · press F12` });
+      hiddenDiff = 0;
+    }
+  };
 
   for (const event of events) {
     if (event.kind === "thinking" && !expandedKinds.thinking) {
@@ -1209,25 +1242,39 @@ function filterDisplayEvents(
       continue;
     }
 
-    if (event.kind === "diff" && !expandedKinds.diff && isDiffDetailLine(event.text)) {
+    if (isDiffEventKind(event.kind) && !expandedKinds.diff && isDiffDetailLine(event.text)) {
       hiddenDiff++;
       continue;
     }
 
+    flushHidden();
     filtered.push(event);
   }
 
-  if (hiddenThinking > 0) {
-    filtered.push({ kind: "muted", text: `Thinking collapsed (${hiddenThinking}) · press F12` });
-  }
-  if (hiddenTool > 0) {
-    filtered.push({ kind: "muted", text: `Tool output collapsed (${hiddenTool}) · press F12` });
-  }
-  if (hiddenDiff > 0) {
-    filtered.push({ kind: "muted", text: `Diff detail collapsed (${hiddenDiff}) · press F12` });
-  }
+  flushHidden();
 
   return filtered;
+}
+
+function appendCoalescedEvents(current: RenderedAgentEvent[], nextEvents: RenderedAgentEvent[]): RenderedAgentEvent[] {
+  const next = [...current];
+  for (const event of nextEvents) {
+    const last = next.at(-1);
+    if (event.replacePrevious && last?.kind === event.kind) {
+      next[next.length - 1] = { kind: event.kind, text: event.text };
+      continue;
+    }
+    if (last && canCoalesce(last, event)) {
+      next[next.length - 1] = { ...last, text: `${last.text}${event.text}` };
+      continue;
+    }
+    next.push(event);
+  }
+  return next;
+}
+
+function canCoalesce(left: RenderedAgentEvent, right: RenderedAgentEvent): boolean {
+  return (left.kind === "text" && right.kind === "text") || (left.kind === "thinking" && right.kind === "thinking");
 }
 
 function looksLikeToolOutput(text: string): boolean {
@@ -1236,6 +1283,47 @@ function looksLikeToolOutput(text: string): boolean {
 
 function isDiffDetailLine(text: string): boolean {
   return text.startsWith("+ ") || text.startsWith("- ") || text.startsWith("  @@") || text.startsWith("  diff --git") || text.startsWith("  index ");
+}
+
+function isDiffEventKind(kind: RenderedAgentEvent["kind"]): boolean {
+  return kind === "diff" || kind === "diffFile" || kind === "diffHunk" || kind === "diffAdd" || kind === "diffRemove" || kind === "diffContext";
+}
+
+function activityForEvent(event: { type: string }): "idle" | "thinking" | "responding" | "tool" {
+  if (event.type === "assistant.delta") {
+    return (event as { channel?: string }).channel === "thinking" ? "thinking" : "responding";
+  }
+  if (event.type === "tool.started" || event.type === "tool.finished" || event.type === "approval.requested") {
+    return "tool";
+  }
+  if (event.type === "step.started" || event.type === "context.budget") {
+    return "thinking";
+  }
+  return "idle";
+}
+
+function activityLabel(activity: "idle" | "thinking" | "responding" | "tool"): string {
+  if (activity === "thinking") return "thinking";
+  if (activity === "responding") return "responding";
+  if (activity === "tool") return "tool";
+  return "running";
+}
+
+function diffLineEventKind(kind: RenderedDiffLine["kind"]): RenderedAgentEventKind {
+  switch (kind) {
+    case "header":
+      return "diff";
+    case "file":
+      return "diffFile";
+    case "hunk":
+      return "diffHunk";
+    case "add":
+      return "diffAdd";
+    case "remove":
+      return "diffRemove";
+    case "context":
+      return "diffContext";
+  }
 }
 
 function PromptLine({ editor }: { editor: PromptEditorState }): React.ReactElement {
@@ -1486,6 +1574,11 @@ function eventTextStyle(kind: RenderedAgentEventKind): { color?: string; dimColo
     warning: { color: "yellow" },
     error: { color: "red" },
     diff: { color: "magenta" },
+    diffFile: { color: "blue", bold: true },
+    diffHunk: { color: "gray", dimColor: true },
+    diffAdd: { color: "green" },
+    diffRemove: { color: "red" },
+    diffContext: { color: "gray", dimColor: true },
     context: { color: "gray", dimColor: true },
     muted: { color: "gray", dimColor: true }
   };
@@ -1657,7 +1750,7 @@ function isPromptEditingMode(mode: Mode): boolean {
 }
 
 function isDetailToggleKey(input: string, key: Record<string, unknown>): boolean {
-  return input === "\u001b[24~" || key.f12 === true;
+  return /^\u001b\[24(?:;\d+)?~$/.test(input) || key.f12 === true;
 }
 
 export async function listWorkspaceFiles(workspacePath: string): Promise<string[]> {

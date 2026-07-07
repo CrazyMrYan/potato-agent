@@ -14,9 +14,21 @@ describe("run command model configuration", () => {
     expect(adapter.constructor.name).toBe("PiRpcAdapter");
   });
 
+  it("uses PiRpcAdapter only when explicitly requested internally", () => {
+    const adapter = createAdapter({
+      adapter: "rpc",
+      provider: "deepseek",
+      model: "deepseek-chat",
+      apiKey: "test-key",
+      workspacePath: "/repo"
+    });
+
+    expect(adapter.constructor.name).toBe("PiRpcAdapter");
+  });
+
   it("requires provider and model for Pi adapter", () => {
-    expect(() => createAdapter({ workspacePath: "/repo" })).toThrow(/--provider/);
-    expect(() => createAdapter({ provider: "openai", workspacePath: "/repo" })).toThrow(/--model/);
+    expect(() => createAdapter({ adapter: "rpc", workspacePath: "/repo" })).toThrow(/--provider/);
+    expect(() => createAdapter({ adapter: "rpc", provider: "openai", workspacePath: "/repo" })).toThrow(/--model/);
   });
 
   it("requires an API key for Pi adapter", () => {
@@ -25,7 +37,7 @@ describe("run command model configuration", () => {
 
     try {
       expect(() =>
-        createAdapter({ provider: "openai", model: "gpt-5.5", workspacePath: "/repo" })
+        createAdapter({ adapter: "rpc", provider: "openai", model: "gpt-5.5", workspacePath: "/repo" })
       ).toThrow(/OPENAI_API_KEY/);
     } finally {
       if (previous) {
@@ -37,6 +49,7 @@ describe("run command model configuration", () => {
   it("accepts a runtime API key for Pi adapter", () => {
     const adapter = createAdapter({
       provider: "openai",
+      adapter: "rpc",
       model: "gpt-5.5",
       apiKey: "test-key",
       workspacePath: "/repo"
@@ -52,6 +65,7 @@ describe("run command model configuration", () => {
     try {
       const adapter = createAdapter({
         provider: "gemini",
+        adapter: "rpc",
         model: "gemini-2.5-pro",
         workspacePath: "/repo"
       });
@@ -73,6 +87,7 @@ describe("run command model configuration", () => {
     try {
       const adapter = createAdapter({
         provider: "deepseek",
+        adapter: "rpc",
         model: "deepseek-chat",
         workspacePath: "/repo"
       });

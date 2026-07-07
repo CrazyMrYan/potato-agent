@@ -10,6 +10,7 @@ class FakeSessionAdapter implements PiSessionAdapter {
   stopped = false;
   prompts: string[] = [];
   approvals: Array<{ requestId: string; approved: boolean }> = [];
+  compactCalls: Array<string | undefined> = [];
 
   async start(): Promise<void> {
     this.started = true;
@@ -26,6 +27,11 @@ class FakeSessionAdapter implements PiSessionAdapter {
 
   async respondToApproval(requestId: string, approved: boolean): Promise<void> {
     this.approvals.push({ requestId, approved });
+  }
+
+  async compact(customInstructions?: string): Promise<{ summary: string; originalTokens?: number; compactedTokens?: number }> {
+    this.compactCalls.push(customInstructions);
+    return { summary: "Pi compacted", originalTokens: 100, compactedTokens: 25 };
   }
 }
 
@@ -57,6 +63,22 @@ describe("AgentSessionFactory", () => {
       expect.objectContaining({ type: "context.budget", taskId: "turn_1" }),
       { type: "task.finished", taskId: "turn_1", summary: "完成：解释项目" }
     ]);
+  });
+
+  it("uses Pi RPC as the default execution adapter", async () => {
+    const factory = new AgentSessionFactory({
+      env: { OPENAI_API_KEY: "test-key", DEEPSEEK_API_KEY: "test-key" },
+      createTraceStore: () => new MemoryTraceStore()
+    });
+
+    const session = await factory.create({
+      provider: "deepseek",
+      model: "test-model",
+      apiKey: "test-key",
+      workspacePath: "/repo"
+    });
+
+    expect(session.adapterName()).toBe("rpc");
   });
 
   it("records trace entries for each session turn by default when a trace store is provided", async () => {
@@ -144,7 +166,13 @@ describe("AgentSessionFactory", () => {
   });
 
   it("supports manual context compaction through the active session", async () => {
-    const adapter = new FakeSessionAdapter();
+    const adapter: PiSessionAdapter = {
+      async start() {},
+      async stop() {},
+      async *send(prompt: string) {
+        yield { type: "task.finished", taskId: "turn_1", summary: prompt };
+      }
+    };
     const traceStore = new MemoryTraceStore();
     const factory = new AgentSessionFactory({
       createAdapter: () => adapter,
@@ -173,6 +201,68 @@ describe("AgentSessionFactory", () => {
       { type: "context.compacted", taskId: "manual_compact", summary: "Manual summary", originalTokens: 20, compactedTokens: 4 }
     ]);
     expect(traceStore.entries.map((entry) => entry.kind)).toContain("context.compacted");
+  });
+
+  it("uses native Pi compaction when the adapter supports it", async () => {
+    const adapter = new FakeSessionAdapter();
+    const factory = new AgentSessionFactory({
+      createAdapter: () => adapter,
+      createContextBudget: () => ({
+        maxTokens: 100,
+        compactAtRatio: 0.75,
+        estimate: () => ({ usedTokens: 20, maxTokens: 100, ratio: 0.2 }),
+        compact: async () => ({ summary: "Fallback summary", originalTokens: 20, compactedTokens: 4 })
+      }),
+      env: { DEEPSEEK_API_KEY: "test-key" }
+    });
+    const session = await factory.create({
+      provider: "deepseek",
+      model: "deepseek-reasoner",
+      workspacePath: "/repo"
+    });
+
+    const events = [];
+    for await (const event of session.compactContext("manual")) {
+      events.push(event);
+    }
+
+    expect(adapter.compactCalls).toEqual(["manual context compaction"]);
+    expect(events).toEqual([
+      { type: "context.compacted", taskId: "manual_compact", summary: "Pi compacted", originalTokens: 100, compactedTokens: 25 }
+    ]);
+  });
+
+  it("treats native Pi session-too-small compaction as a skipped status instead of an error", async () => {
+    const adapter = new FakeSessionAdapter();
+    adapter.compact = async (customInstructions?: string) => {
+      adapter.compactCalls.push(customInstructions);
+      throw new Error("Nothing to compact (session too small)");
+    };
+    const factory = new AgentSessionFactory({
+      createAdapter: () => adapter,
+      env: { DEEPSEEK_API_KEY: "test-key" }
+    });
+    const session = await factory.create({
+      provider: "deepseek",
+      model: "deepseek-reasoner",
+      workspacePath: "/repo"
+    });
+
+    const events = [];
+    for await (const event of session.compactContext("manual")) {
+      events.push(event);
+    }
+
+    expect(adapter.compactCalls).toEqual(["manual context compaction"]);
+    expect(events).toEqual([
+      {
+        type: "context.compacted",
+        taskId: "manual_compact",
+        summary: "Nothing to compact (session too small).",
+        originalTokens: 0,
+        compactedTokens: 0
+      }
+    ]);
   });
 
   it("forwards approval decisions to the active adapter", async () => {
@@ -222,6 +312,23 @@ describe("AgentSessionFactory", () => {
 
     const session = await factory.create({
       adapter: "runtime",
+      provider: "openai-compatible",
+      model: "test-model",
+      apiKey: "test-key",
+      workspacePath: "/repo"
+    });
+
+    expect(session.adapterName()).toBe("runtime");
+  });
+
+  it("creates the standard runtime session for sdk adapter selection", async () => {
+    const factory = new AgentSessionFactory({
+      env: { OPENAI_API_KEY: "test-key" },
+      createTraceStore: () => new MemoryTraceStore()
+    });
+
+    const session = await factory.create({
+      adapter: "sdk",
       provider: "openai-compatible",
       model: "test-model",
       apiKey: "test-key",

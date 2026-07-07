@@ -19,6 +19,7 @@ describe("createTuiConfig", () => {
     expect(
       createTuiConfig({
         resolvedWorkspacePath: "/repo",
+        adapter: "rpc",
         provider: "deepseek",
         model: "deepseek-reasoner",
         apiKey: "secret"
@@ -67,6 +68,26 @@ describe("runTuiCommand", () => {
         apiKey: "stored-key"
       })
     );
+  });
+
+  it("ignores stored adapter selection so TUI uses the default standard runtime", async () => {
+    const render = vi.fn();
+    await runTuiCommand(
+      { cwd: "/repo" },
+      {
+        render,
+        resolveWorkspacePath: async () => "/repo",
+        loadConfig: async () => ({
+          adapter: "rpc",
+          provider: "deepseek",
+          model: "stored-model"
+        })
+      }
+    );
+
+    const renderedConfig = render.mock.calls[0]?.[0];
+    expect(renderedConfig).toEqual(expect.objectContaining({ provider: "deepseek" }));
+    expect(renderedConfig).not.toHaveProperty("adapter");
   });
 
   it("loads configuration through the default config initializer seam", async () => {
