@@ -156,6 +156,21 @@ describe("EventStreamRenderer", () => {
     ).toBe("任务已取消。");
   });
 
+  it("renders verification progress and result", () => {
+    const renderer = new EventStreamRenderer({ colors: false });
+
+    expect(renderer.renderEvent({ type: "verification.started", taskId: "task_1", command: "pnpm test" })).toEqual([
+      { kind: "muted", text: "verification started: pnpm test" }
+    ]);
+    expect(renderer.renderEvent({ type: "verification.finished", taskId: "task_1", command: "pnpm test", exitCode: 0, output: "pass" })).toEqual([
+      { kind: "success", text: "verification passed: pnpm test" }
+    ]);
+    expect(renderer.renderEvent({ type: "verification.finished", taskId: "task_1", command: "pnpm test", exitCode: 1, output: "fail" })).toEqual([
+      { kind: "error", text: "verification failed: pnpm test exit=1" },
+      { kind: "tool", text: "fail" }
+    ]);
+  });
+
   it("renders todo updates and prompt cache hits in Chinese", () => {
     const renderer = new EventStreamRenderer({ colors: false });
 

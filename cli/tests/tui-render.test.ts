@@ -776,6 +776,35 @@ describe("AgentTui render", () => {
     expect(stop).not.toHaveBeenCalled();
   });
 
+  it("shows verification events from the active session", async () => {
+    const workspacePath = await mkdtemp(join(tmpdir(), "coding-agent-tui-"));
+    const rendered = render(
+      React.createElement(AgentTui, {
+        config: {
+          workspacePath,
+          provider: "deepseek",
+          model: "deepseek-reasoner"
+        },
+        createSession: () => ({
+          async start() {},
+          async stop() {},
+          async *send() {
+            yield { type: "verification.started" as const, taskId: "task_1", command: "pnpm test" };
+            yield { type: "verification.finished" as const, taskId: "task_1", command: "pnpm test", exitCode: 0, output: "pass" };
+            yield { type: "task.finished" as const, taskId: "task_1", summary: "done" };
+          },
+          async approve() {}
+        })
+      })
+    );
+
+    rendered.stdin.write("task");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    rendered.stdin.write("\r");
+
+    await waitForFrame(rendered.lastFrame, "verification passed: pnpm test");
+  });
+
   it("opens plan mode from /plan without sending it to the model", async () => {
     const send = vi.fn(async function* () {});
     const rendered = render(

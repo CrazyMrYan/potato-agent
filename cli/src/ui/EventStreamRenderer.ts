@@ -89,6 +89,21 @@ export class EventStreamRenderer {
       return [...this.flushEvents(), ...this.renderTodoUpdate(event.todos)].filter((item) => item.text.length > 0);
     }
 
+    if (event.type === "verification.started") {
+      return [...this.flushEvents(), { kind: "muted" as const, text: this.dim(`verification started: ${event.command}`) }].filter((item) => item.text.length > 0);
+    }
+
+    if (event.type === "verification.finished") {
+      const result =
+        event.exitCode === 0
+          ? [{ kind: "success" as const, text: this.green(`verification passed: ${event.command}`) }]
+          : [
+              { kind: "error" as const, text: this.red(`verification failed: ${event.command} exit=${event.exitCode}`) },
+              { kind: "tool" as const, text: this.formatToolOutput(event.output) }
+            ];
+      return [...this.flushEvents(), ...result].filter((item) => item.text.length > 0);
+    }
+
     return [...this.flushEvents(), this.renderImmediate(event)].filter((item) => item.text.length > 0);
   }
 
@@ -152,9 +167,11 @@ export class EventStreamRenderer {
       case "prompt.cache":
         return { kind: "muted", text: this.dim(formatPromptCache(event.cachedTokens, event.inputTokens, event.cacheWriteTokens)) };
       case "verification.started":
-        return { kind: "tool", text: this.gray(event.command) };
+        return { kind: "muted", text: this.dim(`verification started: ${event.command}`) };
       case "verification.finished":
-        return event.exitCode === 0 ? { kind: "success", text: this.green(event.command) } : { kind: "error", text: this.red(event.command) };
+        return event.exitCode === 0
+          ? { kind: "success", text: this.green(`verification passed: ${event.command}`) }
+          : { kind: "error", text: this.red(`verification failed: ${event.command} exit=${event.exitCode}`) };
       case "task.finished":
         return this.renderTaskFinished(event.summary);
       case "task.failed":
