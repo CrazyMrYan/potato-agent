@@ -385,6 +385,39 @@ describe("AgentSessionFactory", () => {
     ]);
   });
 
+  it("persists session metadata when a session turn finishes", async () => {
+    const adapter = new FakeSessionAdapter();
+    const saved: unknown[] = [];
+    const factory = new AgentSessionFactory({
+      createAdapter: () => adapter,
+      createSessionMetadataStore: () => ({
+        save: async (metadata) => {
+          saved.push(metadata);
+        }
+      }),
+      env: { DEEPSEEK_API_KEY: "test-key" }
+    });
+    const session = await factory.create({
+      provider: "deepseek",
+      model: "deepseek-reasoner",
+      workspacePath: "/repo"
+    });
+
+    for await (const _event of session.send("explain")) {
+      // consume turn
+    }
+
+    expect(saved).toEqual([
+      expect.objectContaining({
+        provider: "deepseek",
+        model: "deepseek-reasoner",
+        workspacePath: "/repo",
+        traceTaskId: "turn_1",
+        summary: "完成：explain"
+      })
+    ]);
+  });
+
   it("creates a standard runtime session when adapter is runtime", async () => {
     const factory = new AgentSessionFactory({
       env: { OPENAI_API_KEY: "test-key" },

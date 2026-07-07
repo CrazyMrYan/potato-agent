@@ -9,6 +9,7 @@ import {
   JsonlTraceStore,
   McpConfigChecker,
   SkillManager,
+  SessionMetadataStore,
   SubAgentManager,
   type AgentConfig,
   type AgentMcpServerConfig,
@@ -44,6 +45,7 @@ export type AgentTuiProps = {
   skillManager?: SkillManager;
   mcpChecker?: McpConfigChecker;
   subAgentManager?: SubAgentManager;
+  sessionMetadataStore?: Pick<SessionMetadataStore, "list">;
 };
 
 export type SkillListProvider = Pick<SkillManager, "list">;
@@ -80,6 +82,7 @@ const commandOptions = [
   { command: "/trace", label: "/trace", description: "显示最近 trace" },
   { command: "/cancel", label: "/cancel", description: "取消当前任务" },
   { command: "/status", label: "/status", description: "显示当前运行时配置" },
+  { command: "/resume", label: "/resume", description: "列出可恢复会话" },
   { command: "/details", label: "/details", description: "设置 thinking/tool/diff 默认展开" },
   { command: "/compact", label: "/compact", description: "主动压缩当前上下文" },
   { command: "/plan", label: "/plan", description: "进入计划模式，不直接改代码" },
@@ -517,6 +520,21 @@ export function AgentTui(props: AgentTuiProps): React.ReactElement {
 
       if (prompt === "/status") {
         appendEvent({ kind: "muted", text: formatRuntimeStatus(config, workspacePath) });
+        return;
+      }
+
+      if (prompt === "/resume") {
+        const sessions = await props.sessionMetadataStore?.list();
+        if (!sessions || sessions.length === 0) {
+          appendEvent({ kind: "muted", text: "resume: 没有可恢复会话。" });
+          return;
+        }
+        appendEvents(
+          sessions.slice(0, 10).map((session) => ({
+            kind: "muted",
+            text: `resume: ${session.sessionId} ${session.provider ?? "unknown"}/${session.model ?? "unknown"} ${session.updatedAt}`
+          }))
+        );
         return;
       }
 

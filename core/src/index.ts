@@ -38,6 +38,8 @@ export type { RuntimeStreamText, RuntimeSessionAdapterDependencies } from "./run
 export { RuntimeTaskAdapter } from "./runtime/RuntimeTaskAdapter.js";
 export { AgentSession } from "./session/AgentSession.js";
 export { AgentSessionFactory } from "./session/AgentSessionFactory.js";
+export { SessionMetadataStore } from "./session/SessionMetadataStore.js";
+export type { SessionMetadata } from "./session/SessionMetadataStore.js";
 export { DEFAULT_BUILTIN_SKILLS, SkillManager } from "./skills/SkillManager.js";
 export type { SkillManagerDependencies } from "./skills/SkillManager.js";
 export { DEFAULT_SUB_AGENTS, SubAgentManager } from "./subagent/SubAgentManager.js";

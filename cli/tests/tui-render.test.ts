@@ -825,6 +825,28 @@ describe("AgentTui render", () => {
     await waitForFrame(rendered.lastFrame, "status: rpc | deepseek/deepseek-reasoner | readonly");
   });
 
+  it("lists resumable sessions with /resume", async () => {
+    const workspacePath = await mkdtemp(join(tmpdir(), "coding-agent-tui-"));
+    const rendered = render(
+      React.createElement(AgentTui, {
+        config: {
+          workspacePath,
+          provider: "deepseek",
+          model: "deepseek-reasoner"
+        },
+        sessionMetadataStore: {
+          list: async () => [{ sessionId: "session_1", provider: "deepseek", model: "deepseek-reasoner", workspacePath, updatedAt: "2026-07-07T00:00:00.000Z" }]
+        }
+      })
+    );
+
+    rendered.stdin.write("/resume");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    rendered.stdin.write("\r");
+
+    await waitForFrame(rendered.lastFrame, "resume: session_1 deepseek/deepseek-reasoner");
+  });
+
   it("opens plan mode from /plan without sending it to the model", async () => {
     const send = vi.fn(async function* () {});
     const rendered = render(

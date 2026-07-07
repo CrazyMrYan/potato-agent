@@ -8,6 +8,7 @@ import { JsonlTraceStore } from "../trace/JsonlTraceStore.js";
 import type { TraceStore } from "../trace/TraceStore.js";
 import { VerificationRunner } from "../verification/VerificationRunner.js";
 import { AgentSession } from "./AgentSession.js";
+import { SessionMetadataStore } from "./SessionMetadataStore.js";
 
 type AgentSessionFactoryDependencies = {
   createAdapter?: (config: AgentConfig) => PiSessionAdapter;
@@ -15,6 +16,7 @@ type AgentSessionFactoryDependencies = {
   createSubAgentManager?: () => Pick<SubAgentManager, "list">;
   createContextBudget?: () => ContextBudgetManager;
   createVerificationRunner?: () => Pick<VerificationRunner, "detect" | "run">;
+  createSessionMetadataStore?: (workspacePath: string) => Pick<SessionMetadataStore, "save">;
   runtime?: RuntimeSessionAdapterDependencies;
   env?: NodeJS.ProcessEnv;
 };
@@ -34,8 +36,15 @@ export class AgentSessionFactory {
     const activeSubAgent = (await subAgentManager.list()).find((agent) => agent.id === resolved.activeSubAgentId);
     const contextBudget = this.dependencies.createContextBudget?.() ?? new HeuristicContextBudgetManager();
     const verificationRunner = this.dependencies.createVerificationRunner?.() ?? new VerificationRunner();
+    const metadataStore = this.dependencies.createSessionMetadataStore
+      ? this.dependencies.createSessionMetadataStore(workspacePath)
+      : new SessionMetadataStore(workspacePath);
 
-    return new AgentSession(adapter, traceStore, workspacePath, activeSubAgent, contextBudget, verificationRunner, resolved.verification);
+    return new AgentSession(adapter, traceStore, workspacePath, activeSubAgent, contextBudget, verificationRunner, resolved.verification, metadataStore, {
+      provider: resolved.provider,
+      model: resolved.model,
+      workspacePath
+    });
   }
 
   private createDefaultAdapter(config: AgentConfig): PiSessionAdapter {

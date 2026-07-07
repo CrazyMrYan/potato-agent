@@ -6,8 +6,10 @@ import type { SubAgentConfig } from "../subagent/SubAgentConfig.js";
 import type { TraceStore } from "../trace/TraceStore.js";
 import { nowIso } from "../trace/TraceStore.js";
 import { runVerificationEvents, type VerificationRunner } from "../verification/VerificationRunner.js";
+import type { SessionMetadata } from "./SessionMetadataStore.js";
 
 export class AgentSession {
+  private readonly sessionId = `session_${Date.now()}`;
   private activeTaskId?: string;
   private readonly cancelledTaskIds = new Set<string>();
 
@@ -18,7 +20,9 @@ export class AgentSession {
     private readonly subAgent?: SubAgentConfig,
     private readonly contextBudget?: ContextBudgetManager,
     private readonly verificationRunner?: Pick<VerificationRunner, "detect" | "run">,
-    private readonly verification?: AgentVerificationConfig
+    private readonly verification?: AgentVerificationConfig,
+    private readonly metadataStore?: Pick<{ save(metadata: SessionMetadata): Promise<void> }, "save">,
+    private readonly metadata?: Partial<Omit<SessionMetadata, "updatedAt" | "summary">>
   ) {}
 
   start(): Promise<void> {
@@ -86,6 +90,7 @@ export class AgentSession {
             await this.trace({ timestamp: nowIso(), taskId: event.taskId, kind: "event", event: verificationEvent });
             yield verificationEvent;
           }
+          await this.saveMetadata(event.taskId, event.summary);
           await this.trace({ timestamp: nowIso(), taskId: event.taskId, kind: "task.finished", summary: event.summary });
         }
         if (event.type === "task.failed") {
@@ -249,6 +254,21 @@ export class AgentSession {
   private async trace(entry: Parameters<TraceStore["append"]>[0]): Promise<void> {
     try {
       await this.traceStore?.append(entry);
+    } catch {
+      return;
+    }
+  }
+
+  private async saveMetadata(traceTaskId: string, summary: string): Promise<void> {
+    try {
+      await this.metadataStore?.save({
+        ...this.metadata,
+        sessionId: this.metadata?.sessionId ?? this.sessionId,
+        workspacePath: this.workspacePath,
+        traceTaskId,
+        summary,
+        updatedAt: nowIso()
+      });
     } catch {
       return;
     }

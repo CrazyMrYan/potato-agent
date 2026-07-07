@@ -6,6 +6,7 @@ import {
   FileAgentConfigStore,
   mergeAgentConfig,
   resolveDefaultWorkspacePath,
+  SessionMetadataStore,
   type AgentConfig
 } from "@potato/core";
 import { AgentTui } from "../ui/AgentTui.js";
@@ -58,6 +59,8 @@ export async function runTuiCommand(
   }
 
   const sessionFactory = new AgentSessionFactory();
+  const workspacePath = config.workspacePath ?? process.cwd();
+  const sessionMetadataStore = new SessionMetadataStore(workspacePath);
   const saveConfig =
     dependencies.saveConfig ??
     ((workspacePath: string, nextConfig: AgentConfig) => {
@@ -67,7 +70,8 @@ export async function runTuiCommand(
     React.createElement(AgentTui, {
         config,
         createSession: (sessionConfig: AgentConfig) => sessionFactory.create(sessionConfig),
-        saveConfig: (nextConfig: AgentConfig) => saveConfig(nextConfig.workspacePath ?? process.cwd(), nextConfig)
+        saveConfig: (nextConfig: AgentConfig) => saveConfig(nextConfig.workspacePath ?? process.cwd(), nextConfig),
+        sessionMetadataStore
       })
   );
 }
