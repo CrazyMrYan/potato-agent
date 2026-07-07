@@ -7,10 +7,11 @@
 当前已经具备：
 
 - CLI 默认 TUI、`run`、`chat`、`diff`、`trace`。
-- TUI slash command：`/mode`、`/skill`、`/mcp`、`/agent`、`/diff`、`/trace`。
+- TUI slash command：`/mode`、`/skill`、`/mcp`、`/agent`、`/diff`、`/trace`、`/cancel`、`/status`、`/resume`。
 - Core 基础能力：`AgentLoop`、`AgentSession`、`SkillManager`、`McpConfigChecker`、`SubAgentManager`、trace、diff、权限策略。
 - 当前默认执行底座已经切回 Pi RPC。Potato 在 Pi 之上自动注入产品层 extensions：manual approval、MCP bridge、SubAgent。
 - M6 第一批体验能力：context budget/自动压缩事件、Markdown 正文渲染、统一 diff renderer、thinking/tool/diff 展开收起、network capability 展示。
+- 下一批核心控制能力：任务取消、验证执行器、配置校验、运行时状态、session metadata、压缩后 token 状态记录。
 - Manual 权限模式已开始支持写入前确认、拒绝暂停和 diff 预览，但展示质量还需要继续提升。
 - CLI npm 发布链路已建立，目标包是 `@potato/cli`，启动命令是 `potato`。
 
@@ -255,10 +256,17 @@ M6 不做以下事情：
 M7 先记录几个下一阶段的主要想法，默认仍走 Pi RPC 路径，不把实验 runtime 扩成主路径。
 
 - 知识库：维护知识库作为项目事实来源，让架构、边界、阶段状态和关键决策更稳定地沉淀下来。
-- 中止操作：希望除了暂停之外，再补一个更明确的任务中止能力，让用户能直接结束当前任务。
 - Todo：参考 Claude Code/Agent SDK 的 TodoWrite 模式，作为 Potato Pi extension 注入真实工具，而不是只靠提示词要求模型输出列表。Pi 工具结果映射为 `todo.updated`；TUI 默认展示结构化进度摘要，开启 `/details` 后展示每条 todo 明细。
 - 系统提示词注入：继续使用 Pi RPC 原生 `--system-prompt` 和 `--append-system-prompt` 分层。Potato 内置系统提示词、skills、MCP、SubAgent、todo 工具说明始终由 Potato 放在 system prompt，不允许项目指令替换；workspace 用户指令文件命名为 `POTATO.md`，读取后作为较低优先级 append system prompt 注入，不写入 `.potato/config.json`。
 - 缓存命中：不在 Potato 内部估算缓存命中。Pi TUI footer 已有 token/cache usage（R/W/CH）展示；Potato 当前 Pi RPC 适配只在 Pi/provider 事件流明确透出 usage 字段时映射为 `prompt.cache`。如果 Pi RPC 后续提供稳定 session stats API，再改为直接读取 Pi 的 cache read/write/hit rate。
+
+## Next Core Batch Status
+
+- Task cancellation is a first-class runtime control path. TUI `/cancel` and Ctrl+C stop the active task and emit `TASK_CANCELLED` into trace.
+- Verification runner can execute configured or auto-detected verification commands after successful task execution.
+- Runtime status is visible through `/status` and the TUI status line.
+- Session metadata is persisted under `.potato/sessions/` and `/resume` lists recent sessions.
+- Context compaction records reduced token state after native or fallback compaction.
 
 ## M8 阶段记录
 
