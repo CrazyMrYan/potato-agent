@@ -73,7 +73,7 @@ export class PiRpcAdapter implements PiAdapter {
       const task = (async () => {
         try {
           await client.prompt(input.prompt);
-          await client.waitForIdle();
+          await client.waitForIdle(this.options.timeoutMs ?? 120_000);
           if (aborted) {
             stream.push(cancelledEvent(input.taskId));
             return;

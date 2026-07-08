@@ -143,7 +143,7 @@ describe("PiRpcAdapter streaming", () => {
     expect((await iterator.next()).value).toMatchObject({ type: "task.finished", summary: "完成" });
   });
 
-  it("waits for RPC idle without imposing a Potato-side timeout", async () => {
+  it("waits for RPC idle with the configured Potato timeout instead of the SDK default", async () => {
     const client = new FakeRpcClient();
     const adapter = new PiRpcAdapter(
       {
@@ -174,10 +174,10 @@ describe("PiRpcAdapter streaming", () => {
     client.finish();
     await consume;
 
-    expect(client.idleTimeouts).toEqual([undefined]);
+    expect(client.idleTimeouts).toEqual([1000]);
   });
 
-  it("waits for reusable session idle without imposing a Potato-side timeout", async () => {
+  it("waits for reusable session idle with the configured Potato timeout instead of the SDK default", async () => {
     const client = new FakeRpcClient();
     const adapter = new PiRpcSessionAdapter(
       {
@@ -204,7 +204,7 @@ describe("PiRpcAdapter streaming", () => {
     await consume;
     await adapter.stop();
 
-    expect(client.idleTimeouts).toEqual([undefined]);
+    expect(client.idleTimeouts).toEqual([1000]);
   });
 
   it("maps Pi tool arguments and assistant deltas into visible events", async () => {
