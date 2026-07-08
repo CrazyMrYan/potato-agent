@@ -1,5 +1,5 @@
 import React from "react";
-import { render as renderInk } from "ink";
+import { render as renderInk, type RenderOptions } from "ink";
 import {
   AgentSessionFactory,
   ensureDefaultAgentConfig,
@@ -18,6 +18,7 @@ export type TuiCommandOptions = AgentConfig & {
 
 export type TuiCommandDependencies = {
   render?: (config: AgentConfig) => void | Promise<void>;
+  renderInk?: (node: React.ReactNode, options?: RenderOptions) => unknown;
   loadConfig?: (workspacePath: string) => Promise<AgentConfig>;
   saveConfig?: (workspacePath: string, config: AgentConfig) => Promise<void>;
   resolveWorkspacePath?: (cwd: string) => Promise<string>;
@@ -66,13 +67,15 @@ export async function runTuiCommand(
     ((workspacePath: string, nextConfig: AgentConfig) => {
       return new FileAgentConfigStore(workspacePath).save(nextConfig);
     });
-  renderInk(
+  const render = dependencies.renderInk ?? renderInk;
+  render(
     React.createElement(AgentTui, {
         config,
         createSession: (sessionConfig: AgentConfig) => sessionFactory.create(sessionConfig),
         saveConfig: (nextConfig: AgentConfig) => saveConfig(nextConfig.workspacePath ?? process.cwd(), nextConfig),
         sessionMetadataStore
-      })
+      }),
+    { exitOnCtrlC: false }
   );
 }
 

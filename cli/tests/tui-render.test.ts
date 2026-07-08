@@ -776,6 +776,53 @@ describe("AgentTui render", () => {
     expect(stop).not.toHaveBeenCalled();
   });
 
+  it("cancels a running task with Ctrl+C without exiting the TUI", async () => {
+    const workspacePath = await mkdtemp(join(tmpdir(), "coding-agent-tui-"));
+    let releaseFinish!: () => void;
+    const finishBlocked = new Promise<void>((resolve) => {
+      releaseFinish = resolve;
+    });
+    const stop = vi.fn(async () => {});
+    const cancelCurrentTask = vi.fn(async () => {
+      releaseFinish();
+    });
+    let sendStarted = false;
+    const rendered = render(
+      React.createElement(AgentTui, {
+        config: {
+          workspacePath,
+          provider: "deepseek",
+          model: "deepseek-reasoner"
+        },
+        createSession: () => ({
+          async start() {},
+          stop,
+          cancelCurrentTask,
+          async *send() {
+            sendStarted = true;
+            yield { type: "step.started" as const, taskId: "task_1", title: "working" };
+            await finishBlocked;
+            yield { type: "task.failed" as const, taskId: "task_1", error: { code: "TASK_CANCELLED" as const, message: "Task cancelled by user." } };
+          },
+          async approve() {}
+        })
+      })
+    );
+
+    rendered.stdin.write("long task");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    rendered.stdin.write("\r");
+    await waitForFrame(rendered.lastFrame, "状态：运行中");
+    await waitForCondition(() => sendStarted, "session send to start");
+
+    rendered.stdin.write("\u0003");
+
+    await waitForFrame(rendered.lastFrame, "任务已取消");
+    expect(cancelCurrentTask).toHaveBeenCalledOnce();
+    expect(stop).not.toHaveBeenCalled();
+    expect(rendered.lastFrame()).toContain("▌");
+  });
+
   it("shows verification events from the active session", async () => {
     const workspacePath = await mkdtemp(join(tmpdir(), "coding-agent-tui-"));
     const rendered = render(
