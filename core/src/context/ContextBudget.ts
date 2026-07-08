@@ -18,6 +18,7 @@ export type ContextBudgetManager = {
   compactAtRatio: number;
   estimate(input: RunTaskInput): ContextBudgetSnapshot;
   record?(input: RunTaskInput, output?: string): void;
+  recordCompaction?(result: ContextCompactionResult): void;
   compact(input: RunTaskInput, budget: ContextBudgetSnapshot): Promise<ContextCompactionResult>;
 };
 
@@ -40,6 +41,10 @@ export class HeuristicContextBudgetManager implements ContextBudgetManager {
 
   record(input: RunTaskInput, output = ""): void {
     this.accumulatedTokens += estimateTokens(`${input.prompt}\n${output}`);
+  }
+
+  recordCompaction(result: ContextCompactionResult): void {
+    this.accumulatedTokens = result.compactedTokens;
   }
 
   async compact(input: RunTaskInput, budget: ContextBudgetSnapshot): Promise<ContextCompactionResult> {

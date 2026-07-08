@@ -4,6 +4,7 @@ import { HeuristicContextBudgetManager } from "../src/context/ContextBudget.js";
 import type { PiSessionAdapter } from "../src/pi/PiSessionAdapter.js";
 import { AgentSessionFactory } from "../src/session/AgentSessionFactory.js";
 import type { TraceEntry, TraceStore } from "../src/trace/TraceStore.js";
+import type { VerificationRunner } from "../src/verification/VerificationRunner.js";
 
 class FakeSessionAdapter implements PiSessionAdapter {
   started = false;
@@ -302,6 +303,153 @@ describe("AgentSessionFactory", () => {
 
     expect(adapter.approvals).toEqual([{ requestId: "approval_1", approved: false }]);
     expect(adapter.stopped).toBe(true);
+  });
+
+  it("cancels the active session task, stops the adapter, and records TASK_CANCELLED", async () => {
+    const adapter = new FakeSessionAdapter();
+    const traceStore = new MemoryTraceStore();
+    let releaseSend!: () => void;
+    const sendBlocked = new Promise<void>((resolve) => {
+      releaseSend = resolve;
+    });
+    adapter.send = async function* (prompt: string) {
+      this.prompts.push(prompt);
+      yield { type: "step.started" as const, taskId: "turn_1", title: "working" };
+      await sendBlocked;
+      yield { type: "task.finished" as const, taskId: "turn_1", summary: "should not finish" };
+    };
+
+    const factory = new AgentSessionFactory({
+      createAdapter: () => adapter,
+      createTraceStore: () => traceStore,
+      env: { DEEPSEEK_API_KEY: "test-key" }
+    });
+    const session = await factory.create({
+      provider: "deepseek",
+      model: "deepseek-reasoner",
+      workspacePath: "/repo"
+    });
+
+    const events: AgentEvent[] = [];
+    const consume = (async () => {
+      for await (const event of session.send("long task")) {
+        events.push(event);
+        if (event.type === "step.started") {
+          await session.cancelCurrentTask();
+          releaseSend();
+        }
+      }
+    })();
+
+    await consume;
+
+    expect(adapter.stopped).toBe(true);
+    expect(events.at(-1)).toEqual({
+      type: "task.failed",
+      taskId: "turn_1",
+      error: { code: "TASK_CANCELLED", message: "Task cancelled by user." }
+    });
+    expect(traceStore.entries).toContainEqual(
+      expect.objectContaining({ kind: "task.failed", code: "TASK_CANCELLED", message: "Task cancelled by user." })
+    );
+  });
+
+  it("runs verification for interactive session turns before task.finished is yielded", async () => {
+    const adapter = new FakeSessionAdapter();
+    const factory = new AgentSessionFactory({
+      createAdapter: () => adapter,
+      createVerificationRunner: () =>
+        ({
+          detect: async () => undefined,
+          run: async () => ({ command: "pnpm test", exitCode: 0, output: "pass" })
+        }) as VerificationRunner,
+      env: { DEEPSEEK_API_KEY: "test-key" }
+    });
+    const session = await factory.create({
+      provider: "deepseek",
+      model: "deepseek-reasoner",
+      workspacePath: "/repo",
+      verification: { enabled: true, command: "pnpm test" }
+    });
+
+    const events: AgentEvent[] = [];
+    for await (const event of session.send("change code")) {
+      events.push(event);
+    }
+
+    expect(events.map((event) => event.type)).toEqual([
+      "context.budget",
+      "verification.started",
+      "verification.finished",
+      "task.finished"
+    ]);
+  });
+
+  it("persists session metadata when a session turn finishes", async () => {
+    const adapter = new FakeSessionAdapter();
+    const saved: unknown[] = [];
+    const factory = new AgentSessionFactory({
+      createAdapter: () => adapter,
+      createSessionMetadataStore: () => ({
+        save: async (metadata) => {
+          saved.push(metadata);
+        }
+      }),
+      env: { DEEPSEEK_API_KEY: "test-key" }
+    });
+    const session = await factory.create({
+      provider: "deepseek",
+      model: "deepseek-reasoner",
+      workspacePath: "/repo"
+    });
+
+    for await (const _event of session.send("explain")) {
+      // consume turn
+    }
+
+    expect(saved).toEqual([
+      expect.objectContaining({
+        provider: "deepseek",
+        model: "deepseek-reasoner",
+        workspacePath: "/repo",
+        traceTaskId: "turn_1",
+        summary: "完成：explain"
+      })
+    ]);
+  });
+
+  it("records native compaction as reduced budget state for later turns", async () => {
+    const adapter = new FakeSessionAdapter();
+    adapter.send = async function* (prompt: string) {
+      this.prompts.push(prompt);
+      yield { type: "task.finished" as const, taskId: `turn_${this.prompts.length}`, summary: "large output ".repeat(500) };
+    };
+    const traceStore = new MemoryTraceStore();
+    const factory = new AgentSessionFactory({
+      createAdapter: () => adapter,
+      createTraceStore: () => traceStore,
+      createContextBudget: () => new HeuristicContextBudgetManager(1000, 0.75),
+      env: { DEEPSEEK_API_KEY: "test-key" }
+    });
+    const session = await factory.create({
+      provider: "deepseek",
+      model: "deepseek-reasoner",
+      workspacePath: "/repo"
+    });
+
+    for await (const _event of session.send("large prompt ".repeat(300))) {
+      // accumulate a large budget
+    }
+    for await (const _event of session.compactContext("manual")) {
+      // consume native compaction
+    }
+    let nextBudget = 0;
+    for await (const event of session.send("continue")) {
+      if (event.type === "context.budget") nextBudget = event.usedTokens;
+    }
+
+    expect(traceStore.entries.find((entry) => entry.kind === "context.compacted")).toEqual(expect.objectContaining({ kind: "context.compacted" }));
+    expect(nextBudget).toBeLessThan(100);
   });
 
   it("creates a standard runtime session when adapter is runtime", async () => {

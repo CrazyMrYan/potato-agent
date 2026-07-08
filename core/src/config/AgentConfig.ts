@@ -13,6 +13,7 @@ export type AgentConfig = {
   skills?: AgentSkillConfig[];
   mcpServers?: AgentMcpServerConfig[];
   tools?: AgentToolConfig;
+  verification?: AgentVerificationConfig;
   permissionPolicy?: AgentPermissionPolicy;
   subAgents?: SubAgentConfig[];
   activeSubAgentId?: string;
@@ -43,6 +44,13 @@ export type AgentToolConfig = {
   deny?: string[];
   noTools?: boolean;
   noBuiltinTools?: boolean;
+};
+
+export type AgentVerificationConfig = {
+  enabled?: boolean;
+  command?: string;
+  autoDetect?: boolean;
+  timeoutMs?: number;
 };
 
 export type AgentPermissionMode = "confirm" | "bypass" | "readonly";

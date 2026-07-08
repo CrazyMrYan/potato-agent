@@ -5,8 +5,11 @@ export type {
   AgentPermissionPolicy,
   AgentSkillConfig,
   AgentToolConfig,
+  AgentVerificationConfig,
   ResolvedAgentConfig
 } from "./config/AgentConfig.js";
+export { ConfigValidator } from "./config/ConfigValidator.js";
+export type { ConfigIssue, ConfigValidationResult, ConfigValidatorDependencies } from "./config/ConfigValidator.js";
 export {
   DEFAULT_AGENT_PERMISSION_POLICY,
   DEFAULT_SYSTEM_PROMPT,
@@ -35,6 +38,8 @@ export type { RuntimeStreamText, RuntimeSessionAdapterDependencies } from "./run
 export { RuntimeTaskAdapter } from "./runtime/RuntimeTaskAdapter.js";
 export { AgentSession } from "./session/AgentSession.js";
 export { AgentSessionFactory } from "./session/AgentSessionFactory.js";
+export { SessionMetadataStore } from "./session/SessionMetadataStore.js";
+export type { SessionMetadata } from "./session/SessionMetadataStore.js";
 export { DEFAULT_BUILTIN_SKILLS, SkillManager } from "./skills/SkillManager.js";
 export type { SkillManagerDependencies } from "./skills/SkillManager.js";
 export { DEFAULT_SUB_AGENTS, SubAgentManager } from "./subagent/SubAgentManager.js";
@@ -52,3 +57,5 @@ export { resolvePiCliPath } from "./pi/resolvePiCliPath.js";
 export { JsonlTraceStore } from "./trace/JsonlTraceStore.js";
 export type { RuntimeCapabilityReport, TraceEntry, TraceStore, TraceSummary } from "./trace/TraceStore.js";
 export { nowIso } from "./trace/TraceStore.js";
+export { VerificationRunner, runVerificationEvents } from "./verification/VerificationRunner.js";
+export type { VerificationResult, VerificationRunnerDependencies } from "./verification/VerificationRunner.js";

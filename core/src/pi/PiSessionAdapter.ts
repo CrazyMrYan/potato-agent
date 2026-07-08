@@ -11,6 +11,7 @@ export type PiSessionAdapter = {
   start(): Promise<void>;
   stop(): Promise<void>;
   send(prompt: string): AsyncIterable<AgentEvent>;
+  cancelCurrentTask?(): Promise<void>;
   respondToApproval?(requestId: string, approved: boolean): Promise<void>;
   compact?(customInstructions?: string): Promise<{ summary: string; originalTokens?: number; compactedTokens?: number }>;
 };
@@ -61,6 +62,10 @@ export class PiRpcSessionAdapter implements PiSessionAdapter {
   async stop(): Promise<void> {
     await this.client?.stop();
     this.client = undefined;
+  }
+
+  async cancelCurrentTask(): Promise<void> {
+    await this.stop();
   }
 
   async respondToApproval(requestId: string, approved: boolean): Promise<void> {

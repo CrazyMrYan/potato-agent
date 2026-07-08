@@ -113,4 +113,19 @@ describe("runTuiCommand", () => {
       await rm(workspace, { recursive: true, force: true });
     }
   });
+
+  it("disables Ink's default Ctrl+C exit so running tasks can cancel in-place", async () => {
+    const renderInk = vi.fn();
+
+    await runTuiCommand(
+      { cwd: "/repo" },
+      {
+        renderInk,
+        loadConfig: async () => ({}),
+        resolveWorkspacePath: async () => "/repo"
+      }
+    );
+
+    expect(renderInk).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ exitOnCtrlC: false }));
+  });
 });

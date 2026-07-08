@@ -1,10 +1,12 @@
 import type { AgentEvent, RunTaskInput, TaskFailedEvent, TaskFinishedEvent } from "@potato/protocol";
+import type { AgentVerificationConfig } from "../config/AgentConfig.js";
 import type { ContextBudgetManager } from "../context/ContextBudget.js";
 import type { DiffService } from "../diff/DiffService.js";
 import type { PiAdapter } from "../pi/PiAdapter.js";
 import type { SubAgentConfig } from "../subagent/SubAgentConfig.js";
 import type { RuntimeCapabilityReport, TraceStore } from "../trace/TraceStore.js";
 import { nowIso } from "../trace/TraceStore.js";
+import { runVerificationEvents, type VerificationRunner } from "../verification/VerificationRunner.js";
 
 export type AgentLoopDependencies = {
   traceStore?: TraceStore;
@@ -12,6 +14,9 @@ export type AgentLoopDependencies = {
   runtimeCapability?: RuntimeCapabilityReport;
   subAgent?: SubAgentConfig;
   contextBudget?: ContextBudgetManager;
+  abortSignal?: AbortSignal;
+  verificationRunner?: Pick<VerificationRunner, "detect" | "run">;
+  verification?: AgentVerificationConfig;
 };
 
 export class AgentLoop {
@@ -63,7 +68,11 @@ export class AgentLoop {
     }
 
     let finalEvent: TaskFinishedEvent | TaskFailedEvent | undefined;
-    for await (const event of this.adapter.run(input)) {
+    for await (const event of this.adapter.run(input, { signal: this.dependencies.abortSignal })) {
+      if (this.dependencies.abortSignal?.aborted) {
+        yield* this.cancelled(input.taskId);
+        return;
+      }
       if (event.type === "task.finished" || event.type === "task.failed") {
         finalEvent = event;
         continue;
@@ -106,6 +115,18 @@ export class AgentLoop {
       }
     }
 
+    if (finalEvent?.type === "task.finished") {
+      for await (const event of runVerificationEvents({
+        taskId: input.taskId,
+        workspacePath: input.workspacePath,
+        config: this.dependencies.verification,
+        runner: this.dependencies.verificationRunner
+      })) {
+        await this.traceEvent(event);
+        yield event;
+      }
+    }
+
     if (finalEvent) {
       this.dependencies.contextBudget?.record?.(input, finalEvent.type === "task.finished" ? finalEvent.summary : finalEvent.error.message);
       await this.traceEvent(finalEvent);
@@ -123,6 +144,17 @@ export class AgentLoop {
       }
       yield finalEvent;
     }
+  }
+
+  private async *cancelled(taskId: string): AsyncIterable<AgentEvent> {
+    const cancelled: TaskFailedEvent = {
+      type: "task.failed",
+      taskId,
+      error: { code: "TASK_CANCELLED", message: "Task cancelled by user." }
+    };
+    await this.traceEvent(cancelled);
+    await this.trace({ timestamp: nowIso(), taskId, kind: "task.failed", code: cancelled.error.code, message: cancelled.error.message });
+    yield cancelled;
   }
 
   private async traceEvent(event: AgentEvent): Promise<void> {
@@ -163,6 +195,7 @@ export class AgentLoop {
     }
 
     const result = await manager.compact(input, budget);
+    manager.recordCompaction?.(result);
     await this.trace({ timestamp: nowIso(), taskId: input.taskId, kind: "context.compacted", result });
     return [
       budgetEvent,

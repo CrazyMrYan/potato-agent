@@ -9,6 +9,7 @@ import {
   JsonlTraceStore,
   McpConfigChecker,
   SkillManager,
+  SessionMetadataStore,
   SubAgentManager,
   type AgentConfig,
   type AgentMcpServerConfig,
@@ -44,6 +45,7 @@ export type AgentTuiProps = {
   skillManager?: SkillManager;
   mcpChecker?: McpConfigChecker;
   subAgentManager?: SubAgentManager;
+  sessionMetadataStore?: Pick<SessionMetadataStore, "list">;
 };
 
 export type SkillListProvider = Pick<SkillManager, "list">;
@@ -78,6 +80,9 @@ const commandOptions = [
   { command: "/workspace", label: "/workspace", description: "显示当前工作区" },
   { command: "/diff", label: "/diff", description: "显示当前 Git 变更" },
   { command: "/trace", label: "/trace", description: "显示最近 trace" },
+  { command: "/cancel", label: "/cancel", description: "取消当前任务" },
+  { command: "/status", label: "/status", description: "显示当前运行时配置" },
+  { command: "/resume", label: "/resume", description: "列出可恢复会话" },
   { command: "/details", label: "/details", description: "设置 thinking/tool/diff 默认展开" },
   { command: "/compact", label: "/compact", description: "主动压缩当前上下文" },
   { command: "/plan", label: "/plan", description: "进入计划模式，不直接改代码" },
@@ -476,14 +481,18 @@ export function AgentTui(props: AgentTuiProps): React.ReactElement {
     }
 
     try {
-      await sessionRef.current.stop();
+      if ("cancelCurrentTask" in sessionRef.current && typeof sessionRef.current.cancelCurrentTask === "function") {
+        await sessionRef.current.cancelCurrentTask();
+      } else {
+        await sessionRef.current.stop();
+      }
       sessionRef.current = undefined;
       setBusy(false);
       setPendingApproval(undefined);
       setMode("chat");
-      appendEvent({ kind: "warning", text: "当前任务已暂停。" });
+      appendEvent({ kind: "warning", text: "任务已取消。" });
     } catch (error) {
-      appendEvent({ kind: "error", text: `暂停失败：${error instanceof Error ? error.message : String(error)}` });
+      appendEvent({ kind: "error", text: `取消失败：${error instanceof Error ? error.message : String(error)}` });
     }
   }, [appendEvent, pendingApproval, respondToApproval]);
 
@@ -499,8 +508,33 @@ export function AgentTui(props: AgentTuiProps): React.ReactElement {
         return;
       }
 
+      if (prompt === "/cancel") {
+        await pauseActiveTask();
+        return;
+      }
+
       if (prompt === "/workspace") {
         appendEvent({ kind: "muted", text: `workspace: ${workspacePath}` });
+        return;
+      }
+
+      if (prompt === "/status") {
+        appendEvent({ kind: "muted", text: formatRuntimeStatus(config, workspacePath) });
+        return;
+      }
+
+      if (prompt === "/resume") {
+        const sessions = await props.sessionMetadataStore?.list();
+        if (!sessions || sessions.length === 0) {
+          appendEvent({ kind: "muted", text: "resume: 没有可恢复会话。" });
+          return;
+        }
+        appendEvents(
+          sessions.slice(0, 10).map((session) => ({
+            kind: "muted",
+            text: `resume: ${session.sessionId} ${session.provider ?? "unknown"}/${session.model ?? "unknown"} ${session.updatedAt}`
+          }))
+        );
         return;
       }
 
@@ -570,7 +604,7 @@ export function AgentTui(props: AgentTuiProps): React.ReactElement {
       }
       await sendPrompt(prompt);
     },
-    [app, appendEvent, compactContext, enterModelProviderMode, expandedKinds, openAgentMenu, openMcpMenu, openPermissionMode, openPlanMode, openSkillList, planModeActive, sendPrompt, setDetailsExpanded, showDiff, showTrace, workspacePath]
+    [app, appendEvent, compactContext, enterModelProviderMode, expandedKinds, openAgentMenu, openMcpMenu, openPermissionMode, openPlanMode, openSkillList, pauseActiveTask, planModeActive, sendPrompt, setDetailsExpanded, showDiff, showTrace, workspacePath]
   );
 
   useEffect(() => {
@@ -640,6 +674,10 @@ export function AgentTui(props: AgentTuiProps): React.ReactElement {
 
   useInput((input, key) => {
     if (key.ctrl && input === "c") {
+      if (busy) {
+        void pauseActiveTask();
+        return;
+      }
       void sessionRef.current?.stop();
       app.exit();
       return;
@@ -700,6 +738,12 @@ export function AgentTui(props: AgentTuiProps): React.ReactElement {
     if (promptMode && editor.text === "/model" && (key.return || isReturnInput(input))) {
       updateEditor(createPromptEditor());
       enterModelProviderMode();
+      return;
+    }
+
+    if (promptMode && editor.text === "/cancel" && (key.return || isReturnInput(input))) {
+      updateEditor(createPromptEditor());
+      void pauseActiveTask();
       return;
     }
 
@@ -1715,6 +1759,14 @@ function isPlanExecutionConfirmation(prompt: string): boolean {
 
 function formatModel(config: AgentConfig): string {
   return `${config.provider ?? "未配置"}/${config.model ?? "未配置"}`;
+}
+
+function formatRuntimeStatus(config: AgentConfig, workspacePath: string): string {
+  const adapter = config.adapter ?? "rpc";
+  const provider = config.provider ?? "unknown";
+  const model = config.model ?? "unknown";
+  const permission = config.permissionPolicy?.mode ?? "confirm";
+  return `status: ${adapter} | ${provider}/${model} | ${permission} | ${workspacePath}`;
 }
 
 function formatPermissionMode(mode: AgentPermissionMode): string {
