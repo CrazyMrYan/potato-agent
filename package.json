@@ -4,11 +4,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "pnpm -r --workspace-concurrency=1 build",
+    "build": "pnpm --filter @potato/cli build",
     "build:npm:cli": "node scripts/build-npm-cli.mjs",
     "dev": "pnpm --filter @potato/cli dev",
-    "test": "pnpm build && pnpm -r --workspace-concurrency=1 test",
-    "typecheck": "pnpm build && pnpm -r --workspace-concurrency=1 typecheck"
+    "test": "pnpm --filter @potato/cli test",
+    "typecheck": "pnpm --filter @potato/cli typecheck"
   },
   "packageManager": "pnpm@10.13.1",
   "devDependencies": {

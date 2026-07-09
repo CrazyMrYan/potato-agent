@@ -12,22 +12,10 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@earendil-works/pi-coding-agent": "^0.80.3",
-    "@inquirer/prompts": "^8.5.2",
-    "@potato/core": "workspace:*",
-    "@potato/protocol": "workspace:*",
-    "commander": "^15.0.0",
-    "ink": "^7.1.0",
-    "marked": "^15.0.12",
-    "marked-terminal": "^7.3.0",
-    "parse-diff": "^0.12.0",
-    "picocolors": "^1.1.1",
-    "react": "^19.2.7"
+    "@earendil-works/pi-coding-agent": "^0.80.3"
   },
   "devDependencies": {
     "@types/node": "^26.1.0",
-    "@types/react": "^19.2.17",
-    "ink-testing-library": "^4.0.0",
     "tsx": "^4.22.4",
     "typescript": "^6.0.3",
     "vitest": "^4.1.9"

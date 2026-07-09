@@ -21,19 +21,16 @@ await build({
   minify: true,
   sourcemap: false,
   banner: {
-    js: 'import { createRequire as __codingAgentCreateRequire } from "node:module";const require=__codingAgentCreateRequire(import.meta.url);'
+    js: 'import { createRequire as __potatoCreateRequire } from "node:module";const require=__potatoCreateRequire(import.meta.url);'
   },
   define: {
     "process.env.NODE_ENV": '"production"'
   },
-  external: [
-    "@earendil-works/pi-coding-agent"
-  ]
+  external: ["@earendil-works/pi-coding-agent"]
 });
 await chmod(join(distDir, "cli.js"), 0o755);
 
 const cliPackage = JSON.parse(await readFile(join(repoRoot, "cli", "package.json"), "utf8"));
-const corePackage = JSON.parse(await readFile(join(repoRoot, "core", "package.json"), "utf8"));
 const releasePackage = {
   name: cliPackage.name,
   version: cliPackage.version,
@@ -42,13 +39,10 @@ const releasePackage = {
   bin: {
     potato: "./dist/cli.js"
   },
-  files: [
-    "dist",
-    "README.md"
-  ],
-  dependencies: pickDependencies(corePackage.dependencies, [
-    "@earendil-works/pi-coding-agent"
-  ]),
+  files: ["dist", "README.md"],
+  dependencies: {
+    "@earendil-works/pi-coding-agent": cliPackage.dependencies["@earendil-works/pi-coding-agent"]
+  },
   engines: {
     node: ">=22"
   }
@@ -58,7 +52,3 @@ await writeFile(join(releaseDir, "package.json"), `${JSON.stringify(releasePacka
 await cp(join(repoRoot, "README.md"), join(releaseDir, "README.md"));
 
 console.log(`Built npm CLI package at ${releaseDir}`);
-
-function pickDependencies(dependencies = {}, names) {
-  return Object.fromEntries(names.filter((name) => dependencies[name]).map((name) => [name, dependencies[name]]));
-}
