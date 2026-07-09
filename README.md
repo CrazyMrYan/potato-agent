@@ -1,16 +1,28 @@
 # potato
 
-马铃薯，一个面向开发者的编码智能体产品。
+Potato is a non-invasive enhancer for Pi.
 
-这个仓库用于沉淀一个面向开发者的编码智能体产品。
+The default `potato` command delegates to Pi's public CLI entrypoint, so Pi owns the TUI, runtime, sessions, tools, skills, and agent behavior. Potato adds compatibility checks, packaging, and optional extension-based enhancements without replacing Pi internals.
 
-当前方向是先验证核心智能体工作流：
+## Usage
 
-- 使用 Pi 作为底层智能体执行引擎。
-- 在 `core/` 中沉淀本项目自己的 AgentGateway、AgentOrchestrator、Pi 适配、权限、trace、diff 和工具边界。
-- 先用 `cli/` 作为第一阶段交互壳。
-- 让用户能看到智能体正在做什么。
-- 清晰展示文件差异。
-- 在核心工作流被验证前，暂缓桌面端 UI 投入。
+```bash
+potato
+potato --print "explain this repository"
+potato doctor
+potato enhancements
+```
 
-项目笔记、架构决策、调研记录和实现计划统一存放在 [`wiki/`](wiki/README.md)。
+## Architecture
+
+Potato calls `@earendil-works/pi-coding-agent` through its public `main(args, { extensionFactories })` export. Unknown and future Pi flags pass through unchanged.
+
+Current execution path:
+
+```text
+@potato/cli -> Pi public main() -> Pi CLI/TUI/runtime
+```
+
+Potato-owned code is limited to launcher behavior, doctor checks, release packaging, and optional extension factories.
+
+Project notes and decisions live in [`wiki/`](wiki/README.md).
