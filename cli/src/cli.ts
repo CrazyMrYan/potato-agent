@@ -9,7 +9,8 @@ export type RunCliDependencies = {
 };
 
 export async function runCli(args: string[], dependencies: RunCliDependencies = {}): Promise<number> {
-  const [command, ...rest] = args;
+  const normalizedArgs = args[0] === "--" ? args.slice(1) : args;
+  const [command, ...rest] = normalizedArgs;
   const write = dependencies.write ?? console.log;
 
   if (command === "doctor") {

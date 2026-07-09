@@ -28,6 +28,20 @@ describe("runCli", () => {
     expect(launchPi).not.toHaveBeenCalled();
   });
 
+  it("ignores a leading package-manager argument separator", async () => {
+    const launchPi = vi.fn(async () => undefined);
+    const runDoctor = vi.fn(async () => 0);
+
+    await runCli(["--", "doctor"], {
+      launchPi,
+      runDoctor,
+      write: () => undefined
+    });
+
+    expect(runDoctor).toHaveBeenCalledTimes(1);
+    expect(launchPi).not.toHaveBeenCalled();
+  });
+
   it("prints enhancement status without launching Pi", async () => {
     const lines: string[] = [];
     const launchPi = vi.fn(async () => undefined);
