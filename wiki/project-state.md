@@ -17,6 +17,9 @@
 - `potato --print ...`、`potato --mode rpc ...` 等 Pi 参数由 Pi 处理。
 - `potato doctor` 做非交互兼容性检查。
 - `potato enhancements` 展示 Potato 增强状态。
+- 默认 approval hook 会拦截变更型 Pi tool call，并通过 Pi UI 请求确认。
+- `.potato/config.json` 可显式配置 MCP bridge 和 subAgent。
+- `--no-extensions` / `-ne` 会关闭本次运行的 Potato extension 注入。
 - npm release build external 掉 Pi，并在 release package 中声明 Pi runtime dependency。
 
 ## 当前边界
@@ -37,5 +40,6 @@ Pi 拥有 TUI、runtime、tools、skills、session、compaction 和 agent behavi
 - `pnpm test`
 - `pnpm typecheck`
 - `pnpm build:npm:cli`
+- `pnpm --filter @potato/cli dev -- enhancements`
 - `pnpm --filter @potato/cli dev -- --help`
 - `pnpm --filter @potato/cli dev -- doctor`

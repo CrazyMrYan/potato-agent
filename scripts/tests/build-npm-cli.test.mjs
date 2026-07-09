@@ -7,16 +7,16 @@ import { execa } from "./helpers.mjs";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
-test("npm cli release inherits Pi runtime dependency from core package", async () => {
+test("npm cli release inherits runtime dependencies from cli package", async () => {
   await execa(process.execPath, [join(repoRoot, "scripts", "build-npm-cli.mjs")], { cwd: repoRoot });
 
   const cliPackage = JSON.parse(await readFile(join(repoRoot, "cli", "package.json"), "utf8"));
-  const corePackage = JSON.parse(await readFile(join(repoRoot, "core", "package.json"), "utf8"));
   const releasePackage = JSON.parse(await readFile(join(repoRoot, ".release", "npm", "cli", "package.json"), "utf8"));
 
-  assert.equal(cliPackage.dependencies["@earendil-works/pi-coding-agent"], undefined);
   assert.equal(
     releasePackage.dependencies["@earendil-works/pi-coding-agent"],
-    corePackage.dependencies["@earendil-works/pi-coding-agent"]
+    cliPackage.dependencies["@earendil-works/pi-coding-agent"]
   );
+  assert.equal(releasePackage.dependencies["@potato/core"], undefined);
+  assert.equal(releasePackage.dependencies["@potato/protocol"], undefined);
 });

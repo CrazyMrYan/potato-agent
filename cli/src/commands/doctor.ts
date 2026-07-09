@@ -1,4 +1,5 @@
 import { main } from "@earendil-works/pi-coding-agent";
+import { buildEnhancementReport, createPotatoExtensionFactories } from "../enhancements/index.js";
 
 export type DoctorResult = {
   ok: boolean;
@@ -46,6 +47,23 @@ export function defaultDoctorChecks(): DoctorCheck[] {
         return typeof main === "function"
           ? { ok: true, message: "@earendil-works/pi-coding-agent main export available" }
           : { ok: false, message: "@earendil-works/pi-coding-agent main export missing" };
+      }
+    },
+    {
+      name: "potato-extensions",
+      async run() {
+        return createPotatoExtensionFactories({ approval: true }).length > 0
+          ? { ok: true, message: "Potato extension factories are available" }
+          : { ok: false, message: "Potato extension factories are missing" };
+      }
+    },
+    {
+      name: "potato-approval",
+      async run() {
+        const approval = buildEnhancementReport({ approval: true }).find((item) => item.id === "approval");
+        return approval?.enabled
+          ? { ok: true, message: "write/command approval is enabled by default" }
+          : { ok: false, message: "write/command approval is not enabled by default" };
       }
     }
   ];

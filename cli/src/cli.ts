@@ -1,9 +1,12 @@
 #!/usr/bin/env node
 import { runDoctor } from "./commands/doctor.js";
+import { loadPotatoConfig } from "./config/potatoConfig.js";
+import { buildEnhancementReport, type PotatoEnhancementConfig } from "./enhancements/index.js";
 import { launchPi } from "./pi/launchPi.js";
 
 export type RunCliDependencies = {
-  launchPi?: (args: string[]) => Promise<void>;
+  launchPi?: (args: string[], options?: { enhancements?: PotatoEnhancementConfig }) => Promise<void>;
+  loadConfig?: () => Promise<PotatoEnhancementConfig>;
   runDoctor?: () => Promise<number>;
   write?: (line: string) => void;
 };
@@ -18,7 +21,10 @@ export async function runCli(args: string[], dependencies: RunCliDependencies = 
   }
 
   if (command === "enhancements") {
-    write("No Potato enhancements are enabled.");
+    const config = await (dependencies.loadConfig ?? loadPotatoConfig)();
+    for (const item of buildEnhancementReport(config)) {
+      write(`${item.enabled ? "ENABLED" : "DISABLED"} ${item.label} - ${item.detail}`);
+    }
     return 0;
   }
 
@@ -28,7 +34,8 @@ export async function runCli(args: string[], dependencies: RunCliDependencies = 
   }
 
   const delegate = dependencies.launchPi ?? launchPi;
-  await delegate(command === undefined ? [] : [command, ...rest]);
+  const config = await (dependencies.loadConfig ?? loadPotatoConfig)();
+  await delegate(command === undefined ? [] : [command, ...rest], { enhancements: config });
   return 0;
 }
 

@@ -7,7 +7,7 @@
     "build": "pnpm --filter @potato/cli build",
     "build:npm:cli": "node scripts/build-npm-cli.mjs",
     "dev": "pnpm --filter @potato/cli dev",
-    "test": "pnpm --filter @potato/cli test",
+    "test": "pnpm --filter @potato/cli test && node --test scripts/tests/*.test.mjs",
     "typecheck": "pnpm --filter @potato/cli typecheck"
   },
   "packageManager": "pnpm@10.13.1",

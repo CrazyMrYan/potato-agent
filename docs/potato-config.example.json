@@ -1,0 +1,23 @@
+{
+  "enhancements": {
+    "approval": true,
+    "mcpServers": [
+      {
+        "name": "docs",
+        "command": "npx",
+        "args": ["mcp-docs"],
+        "env": {
+          "DOCS_API_KEY": "DOCS_API_KEY"
+        }
+      }
+    ],
+    "subagents": [
+      {
+        "id": "reviewer",
+        "description": "Review code changes",
+        "systemPrompt": "You review code for correctness, regressions, and missing tests.",
+        "tools": ["read", "grep", "find", "ls"]
+      }
+    ]
+  }
+}

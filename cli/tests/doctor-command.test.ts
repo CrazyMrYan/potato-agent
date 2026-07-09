@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { runDoctor, type DoctorCheck } from "../src/commands/doctor.js";
+import { defaultDoctorChecks, runDoctor, type DoctorCheck } from "../src/commands/doctor.js";
 
 describe("runDoctor", () => {
   it("reports all checks as ok when Pi exports are available", async () => {
@@ -25,5 +25,11 @@ describe("runDoctor", () => {
 
     expect(exitCode).toBe(1);
     expect(lines).toEqual(["FAIL pi-main - Missing Pi main export"]);
+  });
+
+  it("includes Potato enhancement integration checks by default", () => {
+    expect(defaultDoctorChecks().map((check) => check.name)).toEqual(
+      expect.arrayContaining(["potato-extensions", "potato-approval"])
+    );
   });
 });

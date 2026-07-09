@@ -37,7 +37,7 @@ cli/  @potato/cli
 
 - 识别 Potato 自有 helper command，例如 `doctor`、`enhancements`、`version`。
 - 对普通 agent 使用场景调用 Pi public `main()`。
-- 将 optional Potato extension factories 传给 Pi。
+- 读取 `.potato/config.json`，将 Potato extension factories 传给 Pi。
 - 发布 npm wrapper 包。
 
 `core/` 和 `protocol/` 已移除。它们属于旧的并行 runtime/event 架构，不再符合当前目标。
@@ -46,7 +46,7 @@ cli/  @potato/cli
 
 当前 Potato 自有命令：
 
-- `potato doctor`：检查 Node 版本和 Pi public main export。
+- `potato doctor`：检查 Node 版本、Pi public main export、Potato extension factory 和默认 approval 状态。
 - `potato enhancements`：展示当前 Potato 增强状态。
 - `potato version`：展示 Potato 版本。
 
@@ -61,3 +61,30 @@ Potato enhancement 必须满足：
 - 不依赖 Pi 私有文件路径。
 - 不依赖未文档化 raw event schema。
 - 失败时优先降级或禁用 enhancement，而不是阻止 Pi 启动，除非用户执行的是严格检查命令。
+
+当前增强：
+
+- Approval：默认启用，通过 Pi `tool_call` hook 拦截 `bash`、`edit`、`write` 等变更型工具，并使用 Pi UI 做确认。
+- MCP bridge：从 `.potato/config.json` 的 `mcpServers` 创建 MCP stdio client，将 MCP tools 注册为 Pi tools。
+- SubAgent：从 `.potato/config.json` 的 `subagents` 注册 `potato_subagent` tool，每次调用启动独立 Pi RPC session。
+
+示例配置：
+
+```json
+{
+  "enhancements": {
+    "approval": true,
+    "mcpServers": [{ "name": "docs", "command": "npx", "args": ["mcp-docs"] }],
+    "subagents": [
+      {
+        "id": "reviewer",
+        "description": "Review code",
+        "systemPrompt": "You review code.",
+        "tools": ["read", "grep"]
+      }
+    ]
+  }
+}
+```
+
+仓库内的 `docs/potato-config.example.json` 保持同一份可提交样例；实际项目配置仍放在被忽略的 `.potato/config.json`。

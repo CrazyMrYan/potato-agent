@@ -102,9 +102,9 @@ potato
 Run one-shot commands:
 
 ```bash
-potato run "review this repository"
-potato diff
-potato trace
+potato --print "review this repository"
+potato enhancements
+potato doctor
 ```
 
 ## Notes
@@ -112,3 +112,4 @@ potato trace
 - The release bundle is minified with esbuild.
 - Minification is not a security boundary. Do not put secrets in client-side or published code.
 - `@earendil-works/pi-coding-agent` remains an npm dependency of the published package instead of being bundled.
+- Potato-specific MCP and subagent enhancements are configured through `.potato/config.json`; see `docs/potato-config.example.json` in the repository.
